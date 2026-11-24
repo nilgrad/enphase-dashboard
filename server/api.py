@@ -13,7 +13,7 @@ import requests
 from flask import Blueprint, jsonify, request, send_file, make_response, current_app
 from sqlalchemy import func, select, text
 from server.db import db, DailyStats
-from server.config import load_config, get_authenticated_gateway
+from server.config import load_config, get_authenticated_gateway, get_gateway_token_status
 import server.trmnl_service as trmnl_service
 from server.dashboard_services import (
     get_meter_metadata,
@@ -153,6 +153,15 @@ def health_api():
     except Exception:
         logger.exception("Health check database query failed")
         return jsonify({"status": "unhealthy", "database": "error"}), 503
+
+
+@api_bp.route('/token-status', methods=['GET'])
+def token_status_api():
+    try:
+        config = load_config()
+        return jsonify(get_gateway_token_status(config))
+    except Exception as e:
+        return _handle_internal_error('token_status_api', e)
 
 
 # ---------------------------------------------------------------------------

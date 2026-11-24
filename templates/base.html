@@ -5,21 +5,44 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Enphase Solar</title>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>⚡</text></svg>">
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="{{ url_for('static', filename='vendor/chart.umd.min.js') }}"></script>
     <script defer src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
-    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <script defer src="{{ url_for('static', filename='vendor/alpine.min.js') }}"></script>
 </head>
 <body>
     <div class="container" x-data="dashboard" x-init="init()">
         <header class="app-header">
-            <h1 class="app-title">Enphase Solar <span>⚡</span></h1>
+            <div class="app-header-top">
+                <h1 class="app-title">Enphase Solar <span>⚡</span></h1>
+                {% if config.get('trmnl', {}).get('enabled', True) %}
+                <a class="header-link" href="{{ url_for('trmnl_preview_page') }}" title="Open TRMNL E-Ink Display Preview">
+                    TRMNL Preview
+                </a>
+                {% endif %}
+            </div>
             <p class="config-info">Gateway: <span class="gateway-ip">{{ config.gateway_ip }}</span></p>
         </header>
-        
+
+        {% if token_status and token_status.is_expired %}
+        <div class="alert-banner alert-danger" role="alert" data-testid="jwt-expiry-banner">
+            <span class="alert-banner-text">
+                <strong>Gateway token expired</strong> on {{ token_status.expires_date }}. Generate a new Enphase bearer token and update <code>configuration/config.yml</code>.
+            </span>
+        </div>
+        {% elif token_status and token_status.is_expiring_soon %}
+        <div class="alert-banner alert-warning" role="status" data-testid="jwt-expiry-banner">
+            <span class="alert-banner-text">
+                <strong>Gateway token expiring soon:</strong> expires in {{ token_status.days_remaining }} day{{ '' if token_status.days_remaining == 1 else 's' }} ({{ token_status.expires_date }}). Renew your bearer token in <code>configuration/config.yml</code>.
+            </span>
+        </div>
+        {% endif %}
+
+        <div class="alert-banner alert-danger" role="alert" x-show="errorMessage" x-cloak data-testid="api-error-banner">
+            <span class="alert-banner-text" x-text="errorMessage"></span>
+            <button type="button" class="alert-dismiss" @click="clearError()" aria-label="Dismiss error">&times;</button>
+        </div>
+
         <div class="tabs">
             <button class="tab-btn" :class="{ active: activeTab === 'live-tab' }" @click="openTab('live-tab')">Live</button>
             <button class="tab-btn" :class="{ active: activeTab === 'summary-tab' }" @click="openTab('summary-tab')">Summary</button>

@@ -1,4 +1,4 @@
-<div style="display:flex; justify-content:space-between; align-items:center;">
+<div class="tab-header">
     <h2>Phase Electrical Details</h2>
     <button class="refresh-btn" @click="fetchPhases()" :disabled="loadingPhases">
         <span class="btn-content-stack">
@@ -12,33 +12,34 @@
     <p class="loading">Updating phase details...</p>
 </div>
 
-<div class="data-box" x-show="phases.length > 0" style="padding: 1.1rem 1.1rem 0.25rem 1.1rem;">
+<div class="data-box phases-box" x-show="phases.length > 0">
     <template x-for="(meter, idx) in phases" :key="meter.eid">
-        <div style="margin-bottom: 2rem;">
-            <h3 x-text="formatMeterName(meter, idx)" style="color: var(--primary); border-bottom: 2px solid var(--border-card); padding-bottom: 0.5rem; margin-top: 0;"></h3>
-            <table style="width: 100%; border-collapse: collapse; margin-bottom: 1.5rem; text-align: left;">
-                <thead>
-                    <tr style="border-bottom: 2px solid var(--border-card); font-weight: bold; color: var(--text-main);">
-                        <th style="padding: 0.4rem 0.5rem;">Channel</th>
-                        <th style="padding: 0.4rem 0.5rem;">Active Power</th>
-                        <th style="padding: 0.4rem 0.5rem;">Voltage</th>
-                        <th style="padding: 0.4rem 0.5rem;">Freq</th>
-                        <th style="padding: 0.4rem 0.5rem;">Power Factor</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <template x-for="(ch, cidx) in meter.channels" :key="cidx">
-                        <tr style="border-bottom: 1px solid var(--border-color);">
-                            <td style="padding: 0.4rem 0.5rem; font-weight: bold; color: var(--text-main);" x-text="'Phase ' + (cidx + 1)"></td>
-                            <td style="padding: 0.4rem 0.5rem;" x-text="formatPower(ch.activePower || 0)"></td>
-                            <td style="padding: 0.4rem 0.5rem;" x-text="(ch.voltage || 0).toFixed(2) + ' V'"></td>
-                            <td style="padding: 0.4rem 0.5rem;" x-text="(ch.freq || 0).toFixed(2) + ' Hz'"></td>
-                            <td style="padding: 0.4rem 0.5rem;" x-text="(ch.pwrFactor || 0).toFixed(2)"></td>
+        <div class="mb-2">
+            <h3 class="section-divider-heading" x-text="formatMeterName(meter, idx)"></h3>
+            <div class="table-scroll">
+                <table class="data-table mb-1-5">
+                    <thead>
+                        <tr>
+                            <th>Channel</th>
+                            <th>Active Power</th>
+                            <th>Voltage</th>
+                            <th>Freq</th>
+                            <th>Power Factor</th>
                         </tr>
-                    </template>
-                </tbody>
-            </table>
+                    </thead>
+                    <tbody>
+                        <template x-for="(ch, cidx) in meter.channels" :key="cidx">
+                            <tr>
+                                <td class="fw-bold text-main" x-text="'Phase ' + (cidx + 1)"></td>
+                                <td x-text="formatPower(ch.activePower || 0)"></td>
+                                <td x-text="(ch.voltage || 0).toFixed(2) + ' V'"></td>
+                                <td x-text="(ch.freq || 0).toFixed(2) + ' Hz'"></td>
+                                <td x-text="(ch.pwrFactor || 0).toFixed(2)"></td>
+                            </tr>
+                        </template>
+                    </tbody>
+                </table>
+            </div>
         </div>
     </template>
 </div>
-

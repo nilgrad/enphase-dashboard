@@ -1,5 +1,5 @@
-<div style="display:flex; justify-content:space-between; align-items:center;">
-    <h2>Per-Inverter Health & Status</h2>
+<div class="tab-header">
+    <h2>Per-Inverter Health &amp; Status</h2>
     <button class="refresh-btn" @click="fetchHealth()" :disabled="loadingHealth">
         <span class="btn-content-stack">
             <span :class="{ 'invisible-text': loadingHealth }">Refresh Health</span>
@@ -8,7 +8,7 @@
     </button>
 </div>
 
-<div style="margin-bottom: 1rem; font-weight: bold; padding-top: 1rem; display: flex; gap: 10px; flex-wrap: wrap;" x-show="healthSummary.total > 0">
+<div class="health-summary-bar" x-show="healthSummary.total > 0">
     <span class="status-tag" :class="healthSummary.operating === healthSummary.total ? 'status-ok' : 'status-err'" x-text="'Operating: ' + healthSummary.operating + '/' + healthSummary.total"></span>
     <span class="status-tag" :class="healthSummary.producing === healthSummary.total ? 'status-ok' : 'status-err'" x-text="'Producing: ' + healthSummary.producing + '/' + healthSummary.total"></span>
     <span class="status-tag" :class="healthSummary.communicating === healthSummary.total ? 'status-ok' : 'status-err'" x-text="'Communicating: ' + healthSummary.communicating + '/' + healthSummary.total"></span>
@@ -21,17 +21,17 @@
 <div class="inverters-grid" x-show="inverters.length > 0">
     <template x-for="inv in inverters" :key="inv.serial_num">
         <div class="inverter-card" :style="{ borderTopColor: (inv.operating && inv.producing && inv.communicating) ? 'var(--success)' : 'var(--danger)' }">
-            <h4 style="margin: 0 0 0.5rem 0; color: var(--text-main); font-weight: 700;" x-text="'SN: ' + inv.serial_num"></h4>
-            <p style="margin: 0.25rem 0; font-size: 0.9rem; color: var(--text-muted);">
-                <strong>Model:</strong> <span style="color: var(--text-main); font-weight: 600;" x-text="inv.part_num"></span>
+            <h4 class="inverter-title" x-text="'SN: ' + inv.serial_num"></h4>
+            <p class="inverter-meta">
+                <strong>Model:</strong> <span class="text-main fw-semibold" x-text="inv.part_num"></span>
             </p>
-            <p style="margin: 0.25rem 0; font-size: 0.9rem; color: var(--text-muted);">
-                <strong>Reported:</strong> <span style="color: var(--text-main);" x-text="formatDate(inv.last_rpt_date)"></span>
+            <p class="inverter-meta">
+                <strong>Reported:</strong> <span class="text-main" x-text="formatDate(inv.last_rpt_date)"></span>
             </p>
-            <p style="margin: 0.25rem 0; font-size: 0.85rem; color: var(--danger);" x-show="inv.device_status && !inv.device_status.includes('envoy.global.ok')">
-                <strong>Status:</strong> <span style="font-weight: 600;" x-text="formatInverterStatus(inv.device_status)"></span>
+            <p class="inverter-status-err" x-show="inv.device_status && !inv.device_status.includes('envoy.global.ok')">
+                <strong>Status:</strong> <span class="fw-semibold" x-text="formatInverterStatus(inv.device_status)"></span>
             </p>
-            <div style="display: flex; flex-wrap: wrap; gap: 6px; margin-top: 0.75rem;">
+            <div class="inverter-tags">
                 <span class="status-tag tag-sm" :class="inv.operating ? 'status-ok' : 'status-err'">OP</span>
                 <span class="status-tag tag-sm" :class="inv.producing ? 'status-ok' : 'status-err'">PROD</span>
                 <span class="status-tag tag-sm" :class="inv.communicating ? 'status-ok' : 'status-err'">COMM</span>
@@ -39,4 +39,3 @@
         </div>
     </template>
 </div>
-

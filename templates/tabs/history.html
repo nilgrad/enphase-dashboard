@@ -1,5 +1,5 @@
 <div class="tab-header">
-    <h2 style="margin: 0;">Daily Energy History</h2>
+    <h2>Daily Energy History</h2>
     <div class="tab-controls">
         <button class="refresh-btn" @click="syncDatabase()" :disabled="loadingHistory">
             <span class="btn-content-stack">
@@ -10,48 +10,48 @@
     </div>
 </div>
 
-<div class="data-box" style="background: white; border: 1px solid var(--border-card); padding: 1.1rem; position: relative;">
-    <h3 style="margin-top: 0; color: var(--primary);">Solar Production, Grid Export & House Consumption</h3>
-    <div style="width: 100%; height: 400px; position: relative;">
+<div class="data-box chart-box">
+    <h3 class="section-title-primary">Solar Production, Grid Export &amp; House Consumption</h3>
+    <div class="chart-canvas-wrap-lg">
         <canvas id="historyChart"></canvas>
     </div>
 </div>
 
-<div class="data-box" style="margin-top: 1rem;">
-    <h3 style="margin-top: 0; color: var(--text-main);">Detailed History Log</h3>
-    <div style="overflow-x: auto;">
-        <table style="width: 100%; border-collapse: collapse; text-align: left;" id="history-table">
+<div class="data-box mt-1">
+    <h3 class="section-title">Detailed History Log</h3>
+    <div class="table-scroll">
+        <table class="data-table data-table-primary" id="history-table">
             <thead>
-                <tr style="border-bottom: 2px solid var(--primary); font-weight: bold; color: var(--text-main);">
-                    <th style="padding: 0.4rem 0.5rem;">Date</th>
-                    <th style="padding: 0.4rem 0.5rem;">Solar Production</th>
-                    <th style="padding: 0.4rem 0.5rem;">Exported to Grid</th>
-                    <th style="padding: 0.4rem 0.5rem;">Imported from Grid</th>
-                    <th style="padding: 0.4rem 0.5rem;">House Consumption</th>
-                    <th style="padding: 0.4rem 0.5rem;">Status</th>
+                <tr>
+                    <th>Date</th>
+                    <th>Solar Production</th>
+                    <th>Exported to Grid</th>
+                    <th>Imported from Grid</th>
+                    <th>House Consumption</th>
+                    <th>Status</th>
                 </tr>
             </thead>
             <tbody>
                 <template x-if="loadingHistory && historyLogs.length === 0">
                     <tr>
-                        <td colspan="6" class="loading" style="padding: 0.75rem; text-align: center;">Updating history data...</td>
+                        <td colspan="6" class="loading table-empty-cell">Updating history data...</td>
                     </tr>
                 </template>
                 <template x-if="!loadingHistory && historyLogs.length === 0">
                     <tr>
-                        <td colspan="6" style="padding: 0.75rem; text-align: center; color: var(--text-muted);">No historical data in database yet. Try running "Sync Database Now".</td>
+                        <td colspan="6" class="table-empty-cell">No historical data in database yet. Try running "Sync Database Now".</td>
                     </tr>
                 </template>
                 <template x-for="row in paginatedHistoryLogs" :key="row.date">
-                    <tr style="border-bottom: 1px solid var(--border-color);">
-                        <td style="padding: 0.4rem 0.5rem; font-weight: bold; color: var(--text-main);" x-text="row.date"></td>
-                        <td style="padding: 0.4rem 0.5rem; color: var(--success); font-weight: 500;" x-text="row.production_kwh.toFixed(2) + ' kWh'"></td>
-                        <td style="padding: 0.4rem 0.5rem; color: var(--primary); font-weight: 500;" x-text="row.export_kwh.toFixed(2) + ' kWh'"></td>
-                        <td style="padding: 0.4rem 0.5rem; color: var(--danger); font-weight: 500;" x-text="row.import_kwh.toFixed(2) + ' kWh'"></td>
-                        <td style="padding: 0.4rem 0.5rem; color: var(--accent); font-weight: bold;" x-text="row.consumption_kwh.toFixed(2) + ' kWh'"></td>
-                        <td style="padding: 0.4rem 0.5rem;">
+                    <tr>
+                        <td class="fw-bold text-main" x-text="row.date"></td>
+                        <td class="text-success fw-medium" x-text="row.production_kwh.toFixed(2) + ' kWh'"></td>
+                        <td class="text-primary fw-medium" x-text="row.export_kwh.toFixed(2) + ' kWh'"></td>
+                        <td class="text-danger fw-medium" x-text="row.import_kwh.toFixed(2) + ' kWh'"></td>
+                        <td class="text-accent fw-bold" x-text="row.consumption_kwh.toFixed(2) + ' kWh'"></td>
+                        <td>
                             <span class="status-tag status-ok" x-show="!row.is_interpolated">Normal</span>
-                            <span class="status-tag" style="background: var(--warning-light); color: #92400e; border: 1px solid #fef3c7;" x-show="row.is_interpolated">Estimated</span>
+                            <span class="status-tag status-tag-warn" x-show="row.is_interpolated">Estimated</span>
                         </td>
                     </tr>
                 </template>
@@ -63,9 +63,9 @@
     <template x-if="historyLogs.length > 0">
         <div class="pagination-controls">
             <div class="pagination-info">
-                Showing <span style="font-weight: bold; color: var(--text-main);" x-text="Math.min((historyPage - 1) * historyPageSize + 1, historyLogs.length)"></span> to 
-                <span style="font-weight: bold; color: var(--text-main);" x-text="Math.min(historyPage * historyPageSize, historyLogs.length)"></span> of 
-                <span style="font-weight: bold; color: var(--text-main);" x-text="historyLogs.length"></span> entries
+                Showing <span class="fw-bold text-main" x-text="Math.min((historyPage - 1) * historyPageSize + 1, historyLogs.length)"></span> to 
+                <span class="fw-bold text-main" x-text="Math.min(historyPage * historyPageSize, historyLogs.length)"></span> of 
+                <span class="fw-bold text-main" x-text="historyLogs.length"></span> entries
             </div>
             <div class="pagination-buttons">
                 <button class="pagination-btn" @click="prevHistoryPage()" :disabled="historyPage === 1">Prev</button>

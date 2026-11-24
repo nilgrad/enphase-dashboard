@@ -1,12 +1,17 @@
 import copy
 import logging
+import math
 import os
 import threading
+from datetime import datetime, timezone
+import jwt
 import requests
 from requests.adapters import HTTPAdapter
 import urllib3
 import yaml
 from enphase_api.local.gateway import Gateway
+
+DEFAULT_TOKEN_EXPIRY_WARNING_DAYS = 30
 
 logger = logging.getLogger(__name__)
 
@@ -113,6 +118,69 @@ def _normalize_token(token):
     if not token or token == "YOUR_BEARER_TOKEN_HERE":
         return None
     return str(token)
+
+
+def get_gateway_token_status(config=None, now_utc=None, warning_days=DEFAULT_TOKEN_EXPIRY_WARNING_DAYS):
+    """
+    Decode the configured Enphase Gateway JWT `exp` claim (without signature verification)
+    and return safe expiration metadata for UI warnings. Never returns the raw JWT.
+    """
+    if config is None:
+        config = load_config()
+    token = _normalize_token(config.get('gateway_token') if isinstance(config, dict) else None)
+
+    base = {
+        "configured": bool(token),
+        "has_exp": False,
+        "expires_at": None,
+        "expires_date": None,
+        "days_remaining": None,
+        "is_expired": False,
+        "is_expiring_soon": False,
+        "warning_days": int(warning_days),
+    }
+    if not token:
+        return base
+
+    try:
+        claims = jwt.decode(
+            token,
+            options={"verify_signature": False, "verify_exp": False},
+        )
+    except Exception as e:
+        logger.debug("Configured gateway_token is not a decodable JWT: %s", e)
+        return base
+
+    exp = claims.get("exp") if isinstance(claims, dict) else None
+    if not isinstance(exp, (int, float)) or isinstance(exp, bool):
+        return base
+
+    try:
+        exp_dt = datetime.fromtimestamp(float(exp), tz=timezone.utc)
+    except (OverflowError, OSError, ValueError):
+        return base
+
+    if now_utc is None:
+        now = datetime.now(timezone.utc)
+    elif now_utc.tzinfo is None:
+        now = now_utc.replace(tzinfo=timezone.utc)
+    else:
+        now = now_utc.astimezone(timezone.utc)
+
+    delta_seconds = (exp_dt - now).total_seconds()
+    is_expired = delta_seconds <= 0
+    days_remaining = math.floor(delta_seconds / 86400)
+    is_expiring_soon = (not is_expired) and (delta_seconds <= warning_days * 86400)
+
+    base.update({
+        "has_exp": True,
+        "expires_at": exp_dt.isoformat(),
+        "expires_date": exp_dt.date().isoformat(),
+        "days_remaining": days_remaining,
+        "is_expired": is_expired,
+        "is_expiring_soon": is_expiring_soon,
+    })
+    return base
 
 
 class ManagedGateway:
