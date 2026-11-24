@@ -1,24 +1,39 @@
 import os
+import sys
+import types
 import json
 import tempfile
 import threading
 import unittest
 from datetime import datetime, date, timedelta, timezone
-from unittest.mock import patch
+from unittest.mock import patch, MagicMock
 from zoneinfo import ZoneInfo
 
 from flask import Flask
 from PIL import Image
 
+# Allow testing server.api even in minimal environments without Enphase-API installed
+if 'enphase_api' not in sys.modules:
+    _enphase_pkg = types.ModuleType('enphase_api')
+    _enphase_local = types.ModuleType('enphase_api.local')
+    _enphase_gw = types.ModuleType('enphase_api.local.gateway')
+    _enphase_gw.Gateway = MagicMock
+    sys.modules['enphase_api'] = _enphase_pkg
+    sys.modules['enphase_api.local'] = _enphase_local
+    sys.modules['enphase_api.local.gateway'] = _enphase_gw
+
 from server.db import db, MeterReading, DailyStats
+from server.api import api_bp
 from server.dashboard_services import (
     aggregate_day,
     interpolate_gap,
+    record_reading,
     get_local_day_utc_bounds,
     compute_daily_metrics,
     get_today_summary,
     annotate_meter_readings,
     select_production_and_grid_meters,
+    _meter_metadata_cache,
 )
 import server.trmnl_service as trmnl_service
 
@@ -36,6 +51,7 @@ def create_test_app():
     app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///:memory:'
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
     db.init_app(app)
+    app.register_blueprint(api_bp)
     with app.app_context():
         db.create_all()
     return app
@@ -333,6 +349,145 @@ class HardwarePortabilityAndSpecsTests(unittest.TestCase):
             html_custom = render_template('tabs/system_specs.html', specs=custom_specs)
             self.assertIn('REC Alpha Pure 420 Technical Stats', html_custom)
             self.assertNotIn('Hyundai', html_custom)
+
+
+class ApiAndRecordReadingTests(unittest.TestCase):
+    def setUp(self):
+        self.app = create_test_app()
+        self.client = self.app.test_client()
+        self.tmpdir = tempfile.TemporaryDirectory()
+        _meter_metadata_cache['host'] = None
+        _meter_metadata_cache['fetched_at'] = 0.0
+        _meter_metadata_cache['by_eid'] = {}
+        self.tz_patch = patch(
+            'server.dashboard_services.get_target_timezone',
+            return_value=ZoneInfo('America/New_York'),
+        )
+        self.tz_patch.start()
+
+    def tearDown(self):
+        self.tz_patch.stop()
+        self.tmpdir.cleanup()
+        with self.app.app_context():
+            db.session.remove()
+            db.drop_all()
+            db.engine.dispose()
+
+    def test_api_meters_annotates_metadata_from_ivp_meters(self):
+        fake_gateway = MagicMock()
+        fake_gateway.host = 'https://envoy.test'
+
+        def fake_api_call(endpoint, response_raw=False):
+            if endpoint == '/ivp/meters/readings':
+                payload = [
+                    {'eid': 7001, 'activePower': 2500, 'actEnergyDlvd': 50000, 'channels': [{'activePower': 2500}]},
+                    {'eid': 7002, 'activePower': -1000, 'actEnergyDlvd': 10000, 'actEnergyRcvd': 20000, 'channels': [{'activePower': -1000}]},
+                ]
+                return json.dumps(payload) if response_raw else payload
+            if endpoint == '/ivp/meters':
+                return [
+                    {'eid': 7001, 'measurementType': 'production', 'state': 'enabled'},
+                    {'eid': 7002, 'measurementType': 'net-consumption', 'state': 'enabled'},
+                ]
+            return []
+
+        fake_gateway.api_call.side_effect = fake_api_call
+
+        with patch('server.api.load_config', return_value={'gateway_ip': 'envoy.test'}), \
+             patch('server.api.get_authenticated_gateway', return_value=fake_gateway):
+            resp = self.client.get('/api/meters')
+            self.assertEqual(resp.status_code, 200)
+            body = resp.get_json()
+            self.assertEqual(len(body), 2)
+            self.assertEqual(body[0]['measurementType'], 'production')
+            self.assertEqual(body[0]['meterState'], 'enabled')
+            self.assertEqual(body[1]['measurementType'], 'net-consumption')
+
+    def test_api_history_today_endpoint_returns_canonical_metrics(self):
+        tz = ZoneInfo('America/New_York')
+        now_utc = datetime.now(timezone.utc)
+        today_local = now_utc.astimezone(tz).date()
+
+        with self.app.app_context():
+            db.session.add(MeterReading(
+                timestamp=now_utc.replace(tzinfo=None) - timedelta(minutes=5),
+                production_wh=50000,
+                import_wh=10000,
+                export_wh=20000,
+            ))
+            db.session.add(DailyStats(
+                date=today_local,
+                production_kwh=25.0,
+                export_kwh=15.0,
+                import_kwh=5.0,
+                consumption_kwh=15.0,
+                is_interpolated=False,
+            ))
+            db.session.commit()
+
+        resp = self.client.get('/api/history/today')
+        self.assertEqual(resp.status_code, 200)
+        body = resp.get_json()
+        self.assertEqual(body['date'], today_local.isoformat())
+        self.assertTrue(body['has_data'])
+        self.assertFalse(body['is_stale'])
+        self.assertEqual(body['net_grid_kwh'], 10.0)
+        self.assertTrue(body['is_net_export'])
+        # direct_use = 25 - 15 = 10; coverage = 10 / 15 * 100 = 66.7%
+        self.assertEqual(body['solar_coverage_pct'], 66.7)
+
+    def test_record_reading_and_trmnl_display_endpoints(self):
+        png_path = os.path.join(self.tmpdir.name, 'trmnl_display.png')
+        bmp_path = os.path.join(self.tmpdir.name, 'trmnl_display.bmp')
+        telemetry_path = os.path.join(self.tmpdir.name, 'trmnl_telemetry.json')
+
+        tz = ZoneInfo('America/New_York')
+        now_local = datetime.now(timezone.utc).astimezone(tz)
+        t1 = int((now_local - timedelta(minutes=15)).timestamp())
+        t2 = int(now_local.timestamp())
+
+        samples = [
+            [
+                {'eid': 2, 'measurementType': 'net-consumption', 'meterState': 'enabled', 'timestamp': t1, 'actEnergyDlvd': 10000, 'actEnergyRcvd': 20000},
+                {'eid': 1, 'measurementType': 'production', 'meterState': 'enabled', 'timestamp': t1, 'actEnergyDlvd': 50000},
+            ],
+            [
+                {'eid': 2, 'measurementType': 'net-consumption', 'meterState': 'enabled', 'timestamp': t2, 'actEnergyDlvd': 11000, 'actEnergyRcvd': 22000},
+                {'eid': 1, 'measurementType': 'production', 'meterState': 'enabled', 'timestamp': t2, 'actEnergyDlvd': 53000},
+            ],
+        ]
+
+        with patch('server.dashboard_services.get_gateway_readings', side_effect=samples), \
+             patch.object(trmnl_service, 'OUTPUT_IMAGE_PATH', png_path), \
+             patch.object(trmnl_service, 'OUTPUT_BMP_PATH', bmp_path), \
+             patch.object(trmnl_service, 'TELEMETRY_PATH', telemetry_path), \
+             patch.object(trmnl_service, 'LEGACY_TELEMETRY_PATH', ''):
+            record_reading(self.app)
+            record_reading(self.app)
+
+            with self.app.app_context():
+                stats = db.session.get(DailyStats, now_local.date())
+                self.assertIsNotNone(stats)
+                self.assertAlmostEqual(stats.production_kwh, 3.0, places=5)
+                self.assertAlmostEqual(stats.import_kwh, 1.0, places=5)
+                self.assertAlmostEqual(stats.export_kwh, 2.0, places=5)
+                self.assertAlmostEqual(stats.consumption_kwh, 2.0, places=5)
+
+            resp = self.client.get('/api/display', headers={'ID': '11:22:33', 'Battery-Voltage': '4.0', 'RSSI': '-65'})
+            self.assertEqual(resp.status_code, 200)
+            payload = resp.get_json()
+            self.assertEqual(payload['status'], 0)
+            self.assertTrue(payload['filename'].startswith('solar_'))
+
+            bmp_resp = self.client.get('/api/display/current.bmp')
+            self.assertEqual(bmp_resp.status_code, 200)
+            self.assertEqual(bmp_resp.mimetype, 'image/bmp')
+            bmp_resp.close()
+
+            png_resp = self.client.get('/api/display/current.png')
+            self.assertEqual(png_resp.status_code, 200)
+            self.assertEqual(png_resp.mimetype, 'image/png')
+            png_resp.close()
 
 
 if __name__ == '__main__':
