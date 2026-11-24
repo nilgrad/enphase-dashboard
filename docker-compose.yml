@@ -13,9 +13,9 @@ services:
             - instance_data:/app/instance
         restart: unless-stopped
         depends_on:
-            - db
+            db:
+                condition: service_healthy
         environment:
-            - FLASK_ENV=production
             - DATABASE_URL=postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env}@db:5432/${POSTGRES_DB:-enphase}
             - TRUST_PROXY_COUNT=${TRUST_PROXY_COUNT:-0}
 
@@ -27,6 +27,11 @@ services:
             POSTGRES_DB: ${POSTGRES_DB:-enphase}
             POSTGRES_USER: ${POSTGRES_USER:-postgres}
             POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env}
+        healthcheck:
+            test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-enphase}"]
+            interval: 5s
+            timeout: 5s
+            retries: 10
         volumes:
             - pgdata:/var/lib/postgresql/data
 

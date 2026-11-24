@@ -1,7 +1,13 @@
+from datetime import datetime, timezone
 from flask_sqlalchemy import SQLAlchemy
-from datetime import datetime
 
 db = SQLAlchemy()
+
+
+def _utcnow_naive():
+    """Return current UTC timestamp as a naive datetime without deprecated datetime.utcnow()."""
+    return datetime.now(timezone.utc).replace(tzinfo=None)
+
 
 class MeterReading(db.Model):
     __tablename__ = 'meter_readings'
@@ -18,6 +24,7 @@ class MeterReading(db.Model):
             'export_wh': self.export_wh
         }
 
+
 class DailyStats(db.Model):
     __tablename__ = 'daily_stats'
     date = db.Column(db.Date, primary_key=True)
@@ -26,7 +33,7 @@ class DailyStats(db.Model):
     export_kwh = db.Column(db.Float, nullable=False)
     consumption_kwh = db.Column(db.Float, nullable=False)
     is_interpolated = db.Column(db.Boolean, default=False, nullable=False)
-    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=_utcnow_naive, onupdate=_utcnow_naive)
 
     def to_dict(self):
         return {

@@ -11,7 +11,7 @@ from urllib.parse import urlencode
 
 import requests
 from flask import Blueprint, jsonify, request, send_file, make_response, current_app
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
 from server.db import db, DailyStats
 from server.config import load_config, get_authenticated_gateway
 import server.trmnl_service as trmnl_service
@@ -142,19 +142,22 @@ def _handle_internal_error(endpoint_name, exc):
 
 
 # ---------------------------------------------------------------------------
-# Enphase Gateway Proxy Endpoints
+# Health Check Endpoint
 # ---------------------------------------------------------------------------
 
-@api_bp.route('/production')
-def production_api():
+@api_bp.route('/health', methods=['GET'])
+def health_api():
     try:
-        config = load_config()
-        gateway = get_authenticated_gateway(config)
-        raw_data = gateway.api_call('/ivp/meters/reports/', response_raw=True)
-        return jsonify(json.loads(raw_data))
-    except Exception as e:
-        return _handle_gateway_error('production_api', e)
+        db.session.execute(text('SELECT 1'))
+        return jsonify({"status": "ok", "database": "ok"}), 200
+    except Exception:
+        logger.exception("Health check database query failed")
+        return jsonify({"status": "unhealthy", "database": "error"}), 503
 
+
+# ---------------------------------------------------------------------------
+# Enphase Gateway Proxy Endpoints
+# ---------------------------------------------------------------------------
 
 @api_bp.route('/meters')
 def meters_api():

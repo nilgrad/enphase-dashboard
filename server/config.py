@@ -1,4 +1,5 @@
 import copy
+import logging
 import os
 import threading
 import requests
@@ -6,6 +7,8 @@ from requests.adapters import HTTPAdapter
 import urllib3
 import yaml
 from enphase_api.local.gateway import Gateway
+
+logger = logging.getLogger(__name__)
 
 BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 CONFIG_FILE = os.path.join(BASE_DIR, 'configuration', 'config.yml')
@@ -183,7 +186,7 @@ class ManagedGateway:
         try:
             logged_in = bool(self._gateway.login(self._token))
         except Exception as e:
-            print(f"Login failed: {e}")
+            logger.warning("Enphase Gateway login failed: %s", e)
 
         if not logged_in and headers is not None and hasattr(headers, 'update'):
             # Fallback to Bearer header if /auth/check_jwt login fails or is unsupported
