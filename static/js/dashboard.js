@@ -524,7 +524,6 @@ document.addEventListener('alpine:init', () => {
         prodPower: 0,
         gridPower: 0,
         consPower: 0,
-        rawMeters: 'No data yet.',
         loadingMeters: false,
         todayDate: '',
         todayProduction: 0,
@@ -543,21 +542,18 @@ document.addEventListener('alpine:init', () => {
         lifetimeExported: '',
         lifetimeConsumed: '',
         netSolarOffset: '0.0%',
-        rawSummary: 'No data yet.',
         loadingSummary: false,
         showEffectivenessChart: false,
         showMonthlyChart: false,
         
         // History state
         historyLogs: [],
-        rawHistory: 'No data yet.',
         loadingHistory: false,
         historyPage: 1,
         historyPageSize: 20,
         
         // Phases state
         phases: [],
-        rawPhases: 'No data yet.',
         loadingPhases: false,
         
         // Health state
@@ -568,17 +564,14 @@ document.addEventListener('alpine:init', () => {
             total: 0
         },
         inverters: [],
-        rawInventory: 'No data yet.',
         loadingHealth: false,
         
         // Connectivity state
         connectivity: null,
-        rawConnectivity: 'No data yet.',
         loadingConnectivity: false,
         
         // Events state
         events: [],
-        rawEvents: 'No data yet.',
         loadingEvents: false,
         
         // Timer & polling state for auto-refresh
@@ -797,7 +790,6 @@ document.addEventListener('alpine:init', () => {
                     const data = await res.json();
                     if (!res.ok) throw new Error(data.error || 'API Error');
                     
-                    this.rawMeters = JSON.stringify(data, null, 2);
                     const { prodMeter, gridMeter } = findProductionAndGridMeters(data);
                     if (prodMeter && gridMeter) {
                         this.meters = data;
@@ -837,8 +829,6 @@ document.addEventListener('alpine:init', () => {
                 const data = await resMeters.json();
                 if (!resMeters.ok) throw new Error(data.error || 'API Error fetching meters');
 
-                this.rawSummary = JSON.stringify(data, null, 2);
-                
                 const { prodMeter, gridMeter } = findProductionAndGridMeters(data);
                 if (prodMeter && gridMeter) {
                     const lifetimeProduction = prodMeter.actEnergyDlvd || 0;
@@ -896,7 +886,6 @@ document.addEventListener('alpine:init', () => {
                 
                 this.historyPage = 1;
                 this.historyLogs = data;
-                this.rawHistory = JSON.stringify(data, null, 2);
                 
                 if (data.length > 0) {
                     this.$nextTick(() => {
@@ -931,7 +920,6 @@ document.addEventListener('alpine:init', () => {
                 const data = await res.json();
                 if (!res.ok) throw new Error(data.error || 'API Error');
 
-                this.rawPhases = JSON.stringify(data, null, 2);
                 const activePhaseMeters = data.filter(m => {
                     if (!Array.isArray(m.channels) || m.channels.length === 0) return false;
                     if (m.meterState && m.meterState !== 'enabled') return false;
@@ -957,7 +945,6 @@ document.addEventListener('alpine:init', () => {
                 const data = await res.json();
                 if (!res.ok) throw new Error(data.error || 'API Error');
 
-                this.rawInventory = JSON.stringify(data, null, 2);
                 const pcuGroup = data.find(g => g.type === 'PCU');
                 if (!pcuGroup) throw new Error('No inverters found in inventory');
 
@@ -1032,7 +1019,6 @@ document.addEventListener('alpine:init', () => {
                 const data = await res.json();
                 if (!res.ok) throw new Error(data.error || 'API Error');
 
-                this.rawConnectivity = JSON.stringify(data, null, 2);
                 const conn = data.connection;
                 this.connectivity = {
                     mqtt_state: conn.mqtt_state || 'unknown',
@@ -1056,7 +1042,6 @@ document.addEventListener('alpine:init', () => {
                 const data = await res.json();
                 if (!res.ok) throw new Error(data.error || 'API Error');
 
-                this.rawEvents = JSON.stringify(data, null, 2);
                 this.events = data.alerts || [];
             } catch (err) {
                 console.error('Fetch events error:', err);

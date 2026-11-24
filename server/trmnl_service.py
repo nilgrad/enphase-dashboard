@@ -1,9 +1,12 @@
+import logging
 import os
 import json
 import tempfile
 import threading
 from datetime import datetime, timezone
 from PIL import Image, ImageDraw, ImageFont
+
+logger = logging.getLogger(__name__)
 
 WIDTH = 800
 HEIGHT = 480
@@ -239,7 +242,7 @@ def render_trmnl_solar(data: dict, output_png_path: str = None, output_bmp_path:
         if output_bmp_path:
             _atomic_write_file(output_bmp_path, lambda f: monochrome_img.save(f, format="BMP"))
 
-    print(f"TRMNL solar screen rendered to {output_png_path}")
+    logger.info("TRMNL solar screen rendered to %s", output_png_path)
     return output_png_path
 
 
@@ -248,8 +251,8 @@ def update_trmnl_display(app):
     try:
         data = get_trmnl_data(app)
         return render_trmnl_solar(data)
-    except Exception as e:
-        print(f"Error updating TRMNL display: {e}")
+    except Exception:
+        logger.exception("Error updating TRMNL display")
         return None
 
 
@@ -297,8 +300,8 @@ def save_trmnl_telemetry(data: dict):
     try:
         with _telemetry_lock:
             _save_trmnl_telemetry_unlocked(data)
-    except Exception as e:
-        print(f"Error saving TRMNL telemetry: {e}", flush=True)
+    except Exception:
+        logger.exception("Error saving TRMNL telemetry")
 
 
 def record_trmnl_checkin(headers: dict) -> dict:
@@ -344,10 +347,13 @@ def record_trmnl_checkin(headers: dict) -> dict:
 
         try:
             _save_trmnl_telemetry_unlocked(telemetry)
-        except Exception as e:
-            print(f"Error saving TRMNL telemetry: {e}", flush=True)
+        except Exception:
+            logger.exception("Error saving TRMNL telemetry")
 
-    print(f"[TRMNL] Check-in: MAC={mac_id}, FW={fw_ver}, Battery={battery}V, RSSI={rssi}dBm at {short_time_str}", flush=True)
+    logger.info(
+        "[TRMNL] Check-in: MAC=%s, FW=%s, Battery=%sV, RSSI=%sdBm at %s",
+        mac_id, fw_ver, battery, rssi, short_time_str,
+    )
     return telemetry
 
 
@@ -369,8 +375,8 @@ def record_trmnl_log_message(headers: dict, message) -> dict:
         telemetry["logs"] = telemetry["logs"][-30:]  # Keep last 30 logs
         try:
             _save_trmnl_telemetry_unlocked(telemetry)
-        except Exception as e:
-            print(f"Error saving TRMNL telemetry: {e}", flush=True)
+        except Exception:
+            logger.exception("Error saving TRMNL telemetry")
 
-    print(f"[TRMNL LOG] {short_time_str} [{headers.get('ID')}]: {message}", flush=True)
+    logger.info("[TRMNL LOG] %s [%s]: %s", short_time_str, headers.get('ID') or headers.get('Id'), message)
     return telemetry

@@ -294,7 +294,7 @@ class ErrorSanitizationProxyAndRateLimitTests(unittest.TestCase):
         with patch('server.api.load_config', return_value={'gateway_ip': '192.168.50.99'}), \
              patch('server.api.get_authenticated_gateway', return_value=fake_gateway), \
              patch.object(api_module.logger, 'exception') as mock_log:
-            resp = self.client.get('/api/production')
+            resp = self.client.get('/api/events')
             self.assertEqual(resp.status_code, 502)
             body = resp.get_json()
             self.assertNotIn(sensitive_secret, json.dumps(body))

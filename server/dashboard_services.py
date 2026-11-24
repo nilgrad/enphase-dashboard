@@ -1,7 +1,10 @@
+import logging
 import threading
 import time as time_module
 from datetime import datetime, date, time, timedelta, timezone
 from server.db import db, MeterReading, DailyStats
+
+logger = logging.getLogger(__name__)
 
 GAP_THRESHOLD = timedelta(hours=2)
 STALE_READING_THRESHOLD = timedelta(minutes=45)
@@ -33,7 +36,7 @@ def get_target_timezone():
     try:
         return ZoneInfo(tz_name)
     except Exception as e:
-        print(f"Error loading timezone {tz_name}, falling back to America/New_York: {e}")
+        logger.warning("Error loading timezone %s, falling back to America/New_York: %s", tz_name, e)
         return ZoneInfo('America/New_York')
 
 
@@ -77,7 +80,7 @@ def get_meter_metadata(gateway, force_refresh=False):
                         'state': meter.get('state'),
                     }
     except Exception as e:
-        print(f"Could not fetch /ivp/meters metadata, falling back to positional mapping: {e}")
+        logger.warning("Could not fetch /ivp/meters metadata, falling back to positional mapping: %s", e)
 
     if by_eid:
         with _meter_metadata_lock:
@@ -238,7 +241,7 @@ def record_reading(app):
             # Check if this reading already exists
             existing = db.session.get(MeterReading, timestamp)
             if existing:
-                print(f"Reading at {timestamp} already exists. Skipping.")
+                logger.info("Reading at %s already exists. Skipping.", timestamp)
                 return
 
             # Get the previous reading strictly before this timestamp to check for gaps
@@ -255,7 +258,10 @@ def record_reading(app):
             )
             db.session.add(new_reading)
             db.session.commit()
-            print(f"Recorded reading at {timestamp} UTC: Prod={prod_wh} Wh, Import={import_wh} Wh, Export={export_wh} Wh")
+            logger.info(
+                "Recorded reading at %s UTC: Prod=%s Wh, Import=%s Wh, Export=%s Wh",
+                timestamp, prod_wh, import_wh, export_wh,
+            )
 
             # Determine local date in target timezone
             target_tz = get_target_timezone()
@@ -265,9 +271,9 @@ def record_reading(app):
                 time_diff = timestamp - prev_ts
                 prev_local_date = prev_ts.replace(tzinfo=timezone.utc).astimezone(target_tz).date()
                 if time_diff > GAP_THRESHOLD and prev_local_date < local_date:
-                    print(
-                        f"Cross-day gap detected between {prev_ts} and {timestamp} "
-                        f"({time_diff.total_seconds()/3600:.2f} hours). Re-aggregating spanned days..."
+                    logger.info(
+                        "Cross-day gap detected between %s and %s (%.2f hours). Re-aggregating spanned days...",
+                        prev_ts, timestamp, time_diff.total_seconds() / 3600,
                     )
                     interpolate_gap(prev_reading, new_reading)
                 else:
@@ -279,12 +285,12 @@ def record_reading(app):
             try:
                 from server.trmnl_service import update_trmnl_display
                 update_trmnl_display(app)
-            except Exception as trmnl_err:
-                print(f"TRMNL update failed: {trmnl_err}")
+            except Exception:
+                logger.exception("TRMNL update failed after recording reading")
 
-        except Exception as e:
+        except Exception:
             db.session.rollback()
-            print(f"Error in record_reading: {e}")
+            logger.exception("Error in record_reading")
 
 
 def interpolate_gap(prev_reading, new_reading):
@@ -409,8 +415,7 @@ def aggregate_day(day_date):
 
     db.session.commit()
     status_label = " (interpolated)" if is_interpolated else ""
-    print(
-        f"Aggregated stats for {day_date}{status_label}: "
-        f"Prod={prod_kwh:.2f} kWh, Import={import_kwh:.2f} kWh, "
-        f"Export={export_kwh:.2f} kWh, Cons={cons_kwh:.2f} kWh"
+    logger.info(
+        "Aggregated stats for %s%s: Prod=%.2f kWh, Import=%.2f kWh, Export=%.2f kWh, Cons=%.2f kWh",
+        day_date, status_label, prod_kwh, import_kwh, export_kwh, cons_kwh,
     )
