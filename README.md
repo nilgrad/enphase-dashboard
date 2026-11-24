@@ -77,19 +77,26 @@ Bypasses cloud latency and rate limits to deliver sub-second telemetry, resilien
    # TRMNL e-ink display configuration
    trmnl:
      enabled: true
-     refresh_rate_seconds: 600       # How often the TRMNL device wakes up to pull a new screen (e.g. 600 = 10 min)
-     render_interval_minutes: 10    # How often the background job re-renders the image
-     api_key: "local-trmnl-token"   # Optional device API key / access token
-     title: "DAILY SOLAR STATUS"    # Screen title
+     refresh_rate_seconds: 600            # How often the TRMNL device wakes up to pull a new screen (e.g. 600 = 10 min)
+     render_interval_minutes: 10          # How often the background job re-renders the image
+     api_key: "CHANGE_ME_TRMNL_API_KEY"   # Required Access-Token for TRMNL device API endpoints
+     setup_enabled: false                 # Enable temporarily only while pairing a new TRMNL device via /api/setup
+     allowed_macs: []                     # Optional list of device MAC IDs permitted to use /api/setup
+     title: "DAILY SOLAR STATUS"          # Screen title
    ```
-
 
 3. *(Optional)* Copy and customize your system specs:
    ```bash
    cp configuration/system_template.yml configuration/system.yml
    ```
 
-> **Security Note:** `config.yml` and `system.yml` contain local network credentials and are automatically ignored by both `.gitignore` and `.dockerignore`.
+4. *(Docker Compose)* Copy the environment template and set a strong PostgreSQL password:
+   ```bash
+   cp .env.example .env
+   ```
+   Edit `.env` and replace `POSTGRES_PASSWORD` with a strong password. If deploying behind a reverse proxy (Nginx, Caddy, Traefik), set `TRUST_PROXY_COUNT=1` in `.env` (or `reverse_proxy.trusted_proxies: 1` in `config.yml`) so `X-Forwarded-*` headers are handled safely via Werkzeug's `ProxyFix`.
+
+> **Security Note:** `config.yml`, `system.yml`, and `.env` contain local network and database credentials and are automatically ignored by both `.gitignore` and `.dockerignore`.
 
 ---
 
@@ -138,23 +145,24 @@ The dashboard includes native **Bring Your Own Server (BYOS)** support for [TRMN
 Renders an 800×480 1-bit monochrome screen designed for the TRMNL OG e-paper display, featuring daily solar production, household consumption, net grid export/import, and solar coverage metrics.
 
 ### Endpoints
-- `GET /api/setup`: Returns device handshake and configuration instructions.
-- `GET /api/display`: Polled by TRMNL on wake; returns sleep duration, landscape rotation, dynamic filename, and image URL.
-- `GET /api/display/current.bmp` & `GET /api/display/current.png`: Serves the rendered 1-bit monochrome image.
-- `POST /api/log`: Ingests and acknowledges device telemetry and error logs.
+- `GET /api/setup`: Returns device handshake and configuration instructions. Disabled by default (`trmnl.setup_enabled: false`) for unauthenticated callers; enable temporarily (optionally with `trmnl.allowed_macs`) when pairing a new device, or authenticate with `Access-Token`.
+- `GET /api/display`: Polled by TRMNL on wake (requires `Access-Token` header matching `trmnl.api_key`); returns sleep duration, landscape rotation, dynamic filename, and a short-lived signed `image_url`.
+- `GET /api/display/current.bmp` & `GET /api/display/current.png`: Serves the rendered 1-bit monochrome image (requires `Access-Token` header or a valid signed URL from `/api/display`).
+- `POST /api/log`: Ingests and acknowledges device telemetry and error logs (requires `Access-Token` header; payload capped at 16 KiB).
 - `GET /api/display/status`: Returns JSON with the latest recorded device status (battery voltage, Wi-Fi RSSI, firmware version, and logs).
 - `GET /trmnl`: Interactive in-browser display preview simulating the physical TRMNL OG device with live telemetry card.
 
 ### Setting Up Your TRMNL Device
-1. Put your TRMNL OG device into **Setup Mode** (double-click the physical button).
-2. Connect to the device's Wi-Fi hotspot (`TRMNL-...`) and navigate to `http://192.168.4.1`.
-3. In the Wi-Fi setup captive portal:
+1. Set a strong `trmnl.api_key` in `configuration/config.yml` (and temporarily set `trmnl.setup_enabled: true` if your device uses `/api/setup` during initial pairing).
+2. Put your TRMNL OG device into **Setup Mode** (double-click the physical button).
+3. Connect to the device's Wi-Fi hotspot (`TRMNL-...`) and navigate to `http://192.168.4.1`.
+4. In the Wi-Fi setup captive portal:
    - Navigate to **Advanced** > **Custom Server**.
    - Enable Custom Server and set the URL to the address of your `enphase-dashboard` server (without a trailing slash):
      - Local LAN IP: `http://<YOUR_SERVER_IP>:5000`
      - Domain / Reverse proxy: `https://<YOUR_DOMAIN>`
-   - Set **API Key** to the `api_key` configured in your `config.yml` (default: `local-trmnl-token`).
-4. Save and reboot. The TRMNL firmware will automatically contact `/api/setup` and poll `/api/display` to render your solar status screen! Single-clicking the device button forces an immediate update.
+   - Set **API Key** to the `api_key` configured in your `config.yml`.
+5. Save and reboot. Once paired, set `trmnl.setup_enabled: false` in `config.yml`. The TRMNL firmware will poll `/api/display` using its `Access-Token` to render your solar status screen! Single-clicking the device button forces an immediate update.
 
 
 ---
