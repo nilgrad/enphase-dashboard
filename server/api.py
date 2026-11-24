@@ -4,10 +4,14 @@ import json
 from flask import Blueprint, jsonify, request, send_file, make_response, current_app
 from server.db import DailyStats
 from server.config import load_config, get_authenticated_gateway
+import server.trmnl_service as trmnl_service
+from server.dashboard_services import (
+    get_meter_metadata,
+    annotate_meter_readings,
+    get_today_summary,
+)
 from server.trmnl_service import (
     update_trmnl_display,
-    OUTPUT_IMAGE_PATH,
-    OUTPUT_BMP_PATH,
     load_trmnl_telemetry,
     record_trmnl_checkin,
     record_trmnl_log_message
@@ -43,7 +47,9 @@ def meters_api():
     gateway = get_authenticated_gateway(config)
     try:
         raw_data = gateway.api_call('/ivp/meters/readings', response_raw=True)
-        return jsonify(json.loads(raw_data))
+        readings = json.loads(raw_data)
+        metadata = get_meter_metadata(gateway)
+        return jsonify(annotate_meter_readings(readings, metadata))
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -87,6 +93,14 @@ def connectivity_api():
 # ---------------------------------------------------------------------------
 # Historical Aggregations Endpoints
 # ---------------------------------------------------------------------------
+
+@api_bp.route('/history/today')
+def today_history_api():
+    try:
+        return jsonify(get_today_summary())
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 
 @api_bp.route('/history/daily')
 def daily_history_api():
@@ -171,12 +185,13 @@ def trmnl_display_api():
 
     record_trmnl_checkin(dict(request.headers))
 
-    if not os.path.exists(OUTPUT_BMP_PATH):
+    bmp_path = trmnl_service.OUTPUT_BMP_PATH
+    if not os.path.exists(bmp_path):
         update_trmnl_display(current_app._get_current_object())
 
     # TRMNL firmware uses filename comparison to skip refresh if unchanged.
     # Appending mtime ensures TRMNL detects when a new render is available.
-    mtime = int(os.path.getmtime(OUTPUT_BMP_PATH)) if os.path.exists(OUTPUT_BMP_PATH) else int(time.time())
+    mtime = int(os.path.getmtime(bmp_path)) if os.path.exists(bmp_path) else int(time.time())
     filename = f"solar_{mtime}.bmp"
 
     return jsonify({
@@ -194,9 +209,10 @@ def trmnl_display_api():
 
 @api_bp.route('/display/current.png', methods=['GET'])
 def trmnl_current_png():
-    if not os.path.exists(OUTPUT_IMAGE_PATH):
+    png_path = trmnl_service.OUTPUT_IMAGE_PATH
+    if not os.path.exists(png_path):
         update_trmnl_display(current_app._get_current_object())
-    response = make_response(send_file(OUTPUT_IMAGE_PATH, mimetype='image/png'))
+    response = make_response(send_file(png_path, mimetype='image/png'))
     response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
     response.headers['Pragma'] = 'no-cache'
     response.headers['Expires'] = '0'
@@ -205,9 +221,10 @@ def trmnl_current_png():
 
 @api_bp.route('/display/current.bmp', methods=['GET'])
 def trmnl_current_bmp():
-    if not os.path.exists(OUTPUT_BMP_PATH):
+    bmp_path = trmnl_service.OUTPUT_BMP_PATH
+    if not os.path.exists(bmp_path):
         update_trmnl_display(current_app._get_current_object())
-    response = make_response(send_file(OUTPUT_BMP_PATH, mimetype='image/bmp'))
+    response = make_response(send_file(bmp_path, mimetype='image/bmp'))
     response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
     response.headers['Pragma'] = 'no-cache'
     response.headers['Expires'] = '0'

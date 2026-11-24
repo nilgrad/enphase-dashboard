@@ -1,56 +1,88 @@
 import os
 import json
+import tempfile
+import threading
 from datetime import datetime, timezone
 from PIL import Image, ImageDraw, ImageFont
-from server.db import DailyStats
 
 WIDTH = 800
 HEIGHT = 480
 BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 FONTS_DIR = os.path.join(BASE_DIR, 'static', 'fonts')
-OUTPUT_IMAGE_PATH = os.path.join(BASE_DIR, 'static', 'trmnl_display.png')
-OUTPUT_BMP_PATH = os.path.join(BASE_DIR, 'static', 'trmnl_display.bmp')
-TELEMETRY_PATH = os.path.join(BASE_DIR, 'static', 'trmnl_telemetry.json')
+DATA_DIR = os.environ.get('TRMNL_DATA_DIR', os.path.join(BASE_DIR, 'instance'))
+OUTPUT_IMAGE_PATH = os.path.join(DATA_DIR, 'trmnl_display.png')
+OUTPUT_BMP_PATH = os.path.join(DATA_DIR, 'trmnl_display.bmp')
+TELEMETRY_PATH = os.path.join(DATA_DIR, 'trmnl_telemetry.json')
+LEGACY_TELEMETRY_PATH = os.path.join(BASE_DIR, 'static', 'trmnl_telemetry.json')
+
+_render_lock = threading.Lock()
+_telemetry_lock = threading.Lock()
+
+
+def _atomic_write_file(target_path: str, write_callback):
+    """Write via a temporary file in the target directory and atomically swap into place."""
+    parent_dir = os.path.dirname(target_path) or '.'
+    os.makedirs(parent_dir, exist_ok=True)
+    fd, tmp_path = tempfile.mkstemp(prefix='.tmp_trmnl_', dir=parent_dir)
+    try:
+        with os.fdopen(fd, 'wb') as tmp_file:
+            write_callback(tmp_file)
+            tmp_file.flush()
+            os.fsync(tmp_file.fileno())
+        os.replace(tmp_path, target_path)
+    except Exception:
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
+        raise
 
 
 def get_trmnl_data(app):
-    """Fetch the latest daily solar stats and prepare formatting for TRMNL rendering."""
+    """Fetch today's canonical solar stats and prepare formatting for TRMNL rendering."""
     from server.config import load_config
-    from server.dashboard_services import get_target_timezone
+    from server.dashboard_services import get_target_timezone, get_today_summary
 
     config = load_config()
     trmnl_config = config.get('trmnl', {})
     title = trmnl_config.get('title', 'DAILY SOLAR STATUS')
 
     tz = get_target_timezone()
-    now_local = datetime.now(timezone.utc).astimezone(tz)
-    last_updated_str = now_local.strftime('%b %d, %I:%M %p')
+    now_utc = datetime.now(timezone.utc)
+    now_local = now_utc.astimezone(tz)
 
     with app.app_context():
-        stats = DailyStats.query.order_by(DailyStats.date.desc()).first()
+        summary = get_today_summary(now_utc=now_utc)
 
-        if stats:
-            production = stats.production_kwh or 0.0
-            consumption = stats.consumption_kwh or 0.0
-            export_val = stats.export_kwh or 0.0
-            import_val = stats.import_kwh or 0.0
+        production = summary['production_kwh']
+        consumption = summary['consumption_kwh']
+        export_val = summary['export_kwh']
+        import_val = summary['import_kwh']
+        net_grid = summary['net_grid_kwh']
+        coverage = summary['solar_coverage_pct']
+        is_export = summary['is_net_export']
+        is_stale = summary['is_stale']
+        has_readings = summary['has_readings']
+
+        if summary['last_reading_utc']:
+            last_dt = datetime.fromisoformat(summary['last_reading_utc']).replace(tzinfo=timezone.utc).astimezone(tz)
+            last_updated_str = last_dt.strftime('%b %d, %I:%M %p')
         else:
-            production = 0.0
-            consumption = 0.0
-            export_val = 0.0
-            import_val = 0.0
+            last_updated_str = now_local.strftime('%b %d, %I:%M %p')
 
-        net_grid = export_val - import_val
-        direct_use = max(0.0, production - export_val)
-        coverage = (direct_use / consumption * 100.0) if consumption > 0 else 0.0
-
-        is_export = net_grid >= 0
         if is_export:
             net_grid_str = f"+{net_grid:.1f}"
             net_grid_unit = "kWh Export"
         else:
             net_grid_str = f"-{abs(net_grid):.1f}"
-            net_grid_unit = "kWh"
+            net_grid_unit = "kWh Import"
+
+        if not has_readings:
+            status_label = "NO DATA"
+        elif is_stale:
+            status_label = "STALE"
+        else:
+            status_label = "ACTIVE"
 
         return {
             "title": title,
@@ -62,12 +94,19 @@ def get_trmnl_data(app):
             "net_grid_unit": net_grid_unit,
             "is_export": is_export,
             "coverage": coverage,
-            "last_updated": last_updated_str
+            "last_updated": last_updated_str,
+            "is_stale": is_stale,
+            "status_label": status_label,
         }
 
 
-def render_trmnl_solar(data: dict, output_png_path: str = OUTPUT_IMAGE_PATH, output_bmp_path: str = OUTPUT_BMP_PATH):
+def render_trmnl_solar(data: dict, output_png_path: str = None, output_bmp_path: str = None):
     """Renders 800x480 monochrome image matching the Daily Solar Status TRMNL recipe."""
+    if output_png_path is None:
+        output_png_path = OUTPUT_IMAGE_PATH
+    if output_bmp_path is None:
+        output_bmp_path = OUTPUT_BMP_PATH
+
     img = Image.new("L", (WIDTH, HEIGHT), color=255)
     draw = ImageDraw.Draw(img)
 
@@ -166,8 +205,6 @@ def render_trmnl_solar(data: dict, output_png_path: str = OUTPUT_IMAGE_PATH, out
             unit_y = (num_y + n_bbox[3]) - u_bbox[3]
             draw.text((bx + 14 + n_w + 6, unit_y), unit_str, fill=0, font=u_font)
 
-
-
     # 3. Footer Bar
     bar_h = 30
     footer_y = HEIGHT - pad - bar_h
@@ -179,28 +216,28 @@ def render_trmnl_solar(data: dict, output_png_path: str = OUTPUT_IMAGE_PATH, out
     f_y = footer_y + (bar_h - f_h) // 2 - f_bbox[1]
     draw.text((pad + 14, f_y), footer_text, fill=255, font=font_footer)
 
-    # Active indicator
-    active_str = "ACTIVE"
-    a_bbox = draw.textbbox((0, 0), active_str, font=font_footer)
+    # Freshness status indicator
+    status_str = str(data.get("status_label", "ACTIVE")).upper()
+    is_stale = bool(data.get("is_stale", False))
+    a_bbox = draw.textbbox((0, 0), status_str, font=font_footer)
     a_w = a_bbox[2] - a_bbox[0]
 
     circ_r = 4
     circ_x = WIDTH - pad - 14 - a_w - 12
     circ_y = footer_y + bar_h // 2
-    draw.ellipse([circ_x - circ_r, circ_y - circ_r, circ_x + circ_r, circ_y + circ_r], fill=255)
-    draw.text((WIDTH - pad - 14 - a_w, f_y), active_str, fill=255, font=font_footer)
+    if is_stale or status_str != "ACTIVE":
+        draw.ellipse([circ_x - circ_r, circ_y - circ_r, circ_x + circ_r, circ_y + circ_r], fill=0, outline=255, width=2)
+    else:
+        draw.ellipse([circ_x - circ_r, circ_y - circ_r, circ_x + circ_r, circ_y + circ_r], fill=255)
+    draw.text((WIDTH - pad - 14 - a_w, f_y), status_str, fill=255, font=font_footer)
 
     # Convert to 1-bit monochrome image (crisp pixel rendering without dither speckles)
     monochrome_img = img.convert("1", dither=Image.Dither.NONE)
 
-    # Save PNG
-    os.makedirs(os.path.dirname(output_png_path), exist_ok=True)
-    monochrome_img.save(output_png_path, format="PNG")
-
-    # Save BMP
-    if output_bmp_path:
-        os.makedirs(os.path.dirname(output_bmp_path), exist_ok=True)
-        monochrome_img.save(output_bmp_path, format="BMP")
+    with _render_lock:
+        _atomic_write_file(output_png_path, lambda f: monochrome_img.save(f, format="PNG"))
+        if output_bmp_path:
+            _atomic_write_file(output_bmp_path, lambda f: monochrome_img.save(f, format="BMP"))
 
     print(f"TRMNL solar screen rendered to {output_png_path}")
     return output_png_path
@@ -216,14 +253,7 @@ def update_trmnl_display(app):
         return None
 
 
-def load_trmnl_telemetry() -> dict:
-    """Loads the last recorded TRMNL device status, telemetry, and error logs."""
-    if os.path.exists(TELEMETRY_PATH):
-        try:
-            with open(TELEMETRY_PATH, 'r') as f:
-                return json.load(f)
-        except Exception:
-            pass
+def _default_telemetry() -> dict:
     return {
         "last_seen": None,
         "mac_id": None,
@@ -236,19 +266,43 @@ def load_trmnl_telemetry() -> dict:
     }
 
 
+def _load_trmnl_telemetry_unlocked() -> dict:
+    for path in (TELEMETRY_PATH, LEGACY_TELEMETRY_PATH):
+        if path and os.path.exists(path):
+            try:
+                with open(path, 'r') as f:
+                    data = json.load(f)
+                    if isinstance(data, dict):
+                        merged = _default_telemetry()
+                        merged.update(data)
+                        return merged
+            except Exception:
+                pass
+    return _default_telemetry()
+
+
+def load_trmnl_telemetry() -> dict:
+    """Loads the last recorded TRMNL device status, telemetry, and error logs."""
+    with _telemetry_lock:
+        return _load_trmnl_telemetry_unlocked()
+
+
+def _save_trmnl_telemetry_unlocked(data: dict):
+    payload = json.dumps(data, indent=2).encode('utf-8')
+    _atomic_write_file(TELEMETRY_PATH, lambda f: f.write(payload))
+
+
 def save_trmnl_telemetry(data: dict):
-    """Persists TRMNL device status and logs to static/trmnl_telemetry.json."""
+    """Atomically persists TRMNL device status and logs to instance/trmnl_telemetry.json."""
     try:
-        os.makedirs(os.path.dirname(TELEMETRY_PATH), exist_ok=True)
-        with open(TELEMETRY_PATH, 'w') as f:
-            json.dump(data, f, indent=2)
+        with _telemetry_lock:
+            _save_trmnl_telemetry_unlocked(data)
     except Exception as e:
         print(f"Error saving TRMNL telemetry: {e}", flush=True)
 
 
 def record_trmnl_checkin(headers: dict) -> dict:
-    """Extracts device telemetry from TRMNL request headers and stores it."""
-    telemetry = load_trmnl_telemetry()
+    """Extracts device telemetry from TRMNL request headers and stores it safely."""
     mac_id = headers.get('ID') or headers.get('Id')
     fw_ver = headers.get('FW-Version') or headers.get('Fw-Version')
     battery = headers.get('Battery-Voltage') or headers.get('Battery_Voltage')
@@ -259,41 +313,46 @@ def record_trmnl_checkin(headers: dict) -> dict:
     now_local = datetime.now(timezone.utc).astimezone(tz)
     short_time_str = now_local.strftime('%b %d, %I:%M %p')
 
-    telemetry["last_seen"] = short_time_str
-    if mac_id:
-        telemetry["mac_id"] = mac_id
-    if fw_ver:
-        telemetry["fw_version"] = fw_ver
-    if battery:
-        telemetry["battery_voltage"] = battery
-        try:
-            v = float(battery)
-            telemetry["battery_pct"] = min(100, max(0, int((v - 3.3) / (4.2 - 3.3) * 100)))
-        except (ValueError, TypeError):
-            telemetry["battery_pct"] = None
-    if rssi:
-        telemetry["rssi"] = rssi
-        try:
-            r = int(rssi)
-            if r >= -60:
-                telemetry["wifi_quality"] = "Great"
-            elif r >= -70:
-                telemetry["wifi_quality"] = "Good"
-            elif r >= -80:
-                telemetry["wifi_quality"] = "Fair"
-            else:
-                telemetry["wifi_quality"] = "Weak"
-        except (ValueError, TypeError):
-            telemetry["wifi_quality"] = None
+    with _telemetry_lock:
+        telemetry = _load_trmnl_telemetry_unlocked()
+        telemetry["last_seen"] = short_time_str
+        if mac_id:
+            telemetry["mac_id"] = mac_id
+        if fw_ver:
+            telemetry["fw_version"] = fw_ver
+        if battery:
+            telemetry["battery_voltage"] = battery
+            try:
+                v = float(battery)
+                telemetry["battery_pct"] = min(100, max(0, int((v - 3.3) / (4.2 - 3.3) * 100)))
+            except (ValueError, TypeError):
+                telemetry["battery_pct"] = None
+        if rssi:
+            telemetry["rssi"] = rssi
+            try:
+                r = int(rssi)
+                if r >= -60:
+                    telemetry["wifi_quality"] = "Great"
+                elif r >= -70:
+                    telemetry["wifi_quality"] = "Good"
+                elif r >= -80:
+                    telemetry["wifi_quality"] = "Fair"
+                else:
+                    telemetry["wifi_quality"] = "Weak"
+            except (ValueError, TypeError):
+                telemetry["wifi_quality"] = None
 
-    save_trmnl_telemetry(telemetry)
+        try:
+            _save_trmnl_telemetry_unlocked(telemetry)
+        except Exception as e:
+            print(f"Error saving TRMNL telemetry: {e}", flush=True)
+
     print(f"[TRMNL] Check-in: MAC={mac_id}, FW={fw_ver}, Battery={battery}V, RSSI={rssi}dBm at {short_time_str}", flush=True)
     return telemetry
 
 
-def record_trmnl_log_message(headers: dict, message: any) -> dict:
-    """Appends incoming error / log report from the TRMNL device."""
-    telemetry = load_trmnl_telemetry()
+def record_trmnl_log_message(headers: dict, message) -> dict:
+    """Appends incoming error / log report from the TRMNL device safely."""
     from server.dashboard_services import get_target_timezone
     tz = get_target_timezone()
     now_local = datetime.now(timezone.utc).astimezone(tz)
@@ -303,9 +362,15 @@ def record_trmnl_log_message(headers: dict, message: any) -> dict:
         "mac_id": headers.get('ID') or headers.get('Id'),
         "message": message
     }
-    telemetry.setdefault("logs", []).append(entry)
-    telemetry["logs"] = telemetry["logs"][-30:]  # Keep last 30 logs
-    save_trmnl_telemetry(telemetry)
+
+    with _telemetry_lock:
+        telemetry = _load_trmnl_telemetry_unlocked()
+        telemetry.setdefault("logs", []).append(entry)
+        telemetry["logs"] = telemetry["logs"][-30:]  # Keep last 30 logs
+        try:
+            _save_trmnl_telemetry_unlocked(telemetry)
+        except Exception as e:
+            print(f"Error saving TRMNL telemetry: {e}", flush=True)
+
     print(f"[TRMNL LOG] {short_time_str} [{headers.get('ID')}]: {message}", flush=True)
     return telemetry
-
