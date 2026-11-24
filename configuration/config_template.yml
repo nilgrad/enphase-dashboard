@@ -1,6 +1,8 @@
 gateway_ip: "envoy.local"
 use_https: true
 gateway_token: "YOUR_BEARER_TOKEN_HERE"
+# verify_ssl: false                # Set to true or path to a CA bundle to verify Gateway TLS certificate
+# gateway_timeout: 10              # HTTP timeout (seconds) for Enphase Gateway requests
 timezone: "America/New_York"
 
 # TRMNL e-ink display configuration

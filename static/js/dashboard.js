@@ -1,6 +1,7 @@
 let historyChartInstance = null;
 let effectivenessChartInstance = null;
 let monthlyChartInstance = null;
+const TODAY_SUMMARY_REFRESH_MS = 60000;
 
 function formatChartDate(dateStr) {
     if (!dateStr) return '';
@@ -580,10 +581,19 @@ document.addEventListener('alpine:init', () => {
         rawEvents: 'No data yet.',
         loadingEvents: false,
         
-        // Timer for auto-refresh
+        // Timer & polling state for auto-refresh
         refreshTimer: null,
+        metersInFlight: false,
+        todayInFlight: false,
+        lastTodayFetchAt: 0,
+        pollGeneration: 0,
+        _visibilityHandler: null,
         
         init() {
+            // Pause live polling while tab is backgrounded and resume when visible again
+            this._visibilityHandler = () => this.handleVisibilityChange();
+            document.addEventListener('visibilitychange', this._visibilityHandler);
+
             // Load initial tab from hash
             const hash = window.location.hash.replace('#', '');
             if (hash && ['live-tab', 'summary-tab', 'history-tab', 'phase-tab', 'health-tab', 'connectivity-tab', 'events-tab', 'specs-tab'].includes(hash)) {
@@ -601,6 +611,22 @@ document.addEventListener('alpine:init', () => {
             // Trigger load for the initial active tab
             this.handleTabSwitch(this.activeTab);
         },
+
+        destroy() {
+            this.stopRefreshTimer();
+            if (this._visibilityHandler) {
+                document.removeEventListener('visibilitychange', this._visibilityHandler);
+                this._visibilityHandler = null;
+            }
+        },
+
+        handleVisibilityChange() {
+            if (document.hidden) {
+                this.stopRefreshTimer();
+            } else if (this.activeTab === 'live-tab' && this.refreshRate > 0) {
+                this.startLivePolling();
+            }
+        },
         
         openTab(tabName) {
             this.activeTab = tabName;
@@ -609,8 +635,11 @@ document.addEventListener('alpine:init', () => {
         handleTabSwitch(tabName) {
             // Manage refresh timers
             if (tabName === 'live-tab') {
-                this.fetchMeters();
-                this.updateRefreshInterval();
+                if (!document.hidden) {
+                    this.startLivePolling({ forceToday: true });
+                } else {
+                    this.stopRefreshTimer();
+                }
             } else {
                 this.stopRefreshTimer();
             }
@@ -627,18 +656,58 @@ document.addEventListener('alpine:init', () => {
             if (tabName === 'connectivity-tab') this.fetchConnectivity();
             if (tabName === 'events-tab') this.fetchEvents();
         },
+
+        startLivePolling({ forceToday = false } = {}) {
+            this.stopRefreshTimer();
+            if (this.activeTab !== 'live-tab' || document.hidden) {
+                return;
+            }
+            const gen = this.pollGeneration;
+            this.fetchMeters({ forceToday, pollGeneration: gen });
+        },
+
+        scheduleNextPoll(gen) {
+            if (
+                gen !== this.pollGeneration ||
+                this.activeTab !== 'live-tab' ||
+                this.refreshRate <= 0 ||
+                document.hidden
+            ) {
+                return;
+            }
+            if (this.refreshTimer !== null) {
+                clearTimeout(this.refreshTimer);
+                this.refreshTimer = null;
+            }
+            this.refreshTimer = setTimeout(() => {
+                this.refreshTimer = null;
+                this.fetchMeters({ pollGeneration: gen });
+            }, this.refreshRate);
+        },
         
         updateRefreshInterval() {
             this.stopRefreshTimer();
-            if (this.refreshRate > 0 && this.activeTab === 'live-tab') {
-                this.refreshTimer = setInterval(() => this.fetchMeters(), this.refreshRate);
+            if (this.refreshRate > 0 && this.activeTab === 'live-tab' && !document.hidden) {
+                this.scheduleNextPoll(this.pollGeneration);
             }
         },
         
         stopRefreshTimer() {
-            if (this.refreshTimer) {
-                clearInterval(this.refreshTimer);
+            this.pollGeneration += 1;
+            if (this.refreshTimer !== null) {
+                clearTimeout(this.refreshTimer);
                 this.refreshTimer = null;
+            }
+        },
+
+        refreshLiveMeters() {
+            if (this.metersInFlight) {
+                return;
+            }
+            if (this.refreshRate > 0 && this.activeTab === 'live-tab' && !document.hidden) {
+                this.startLivePolling({ forceToday: true });
+            } else {
+                this.fetchMeters({ forceToday: true });
             }
         },
         
@@ -676,23 +745,16 @@ document.addEventListener('alpine:init', () => {
             return idx === 0 ? 'Production Meter' : 'Grid Meter';
         },
 
-        async fetchMeters() {
-            this.loadingMeters = true;
+        async fetchTodaySummary(force = false) {
+            if (this.todayInFlight) {
+                return;
+            }
+            const now = Date.now();
+            if (!force && this.lastTodayFetchAt > 0 && (now - this.lastTodayFetchAt) < TODAY_SUMMARY_REFRESH_MS) {
+                return;
+            }
+            this.todayInFlight = true;
             try {
-                const res = await fetch('/api/meters');
-                const data = await res.json();
-                if (!res.ok) throw new Error(data.error || 'API Error');
-                
-                this.rawMeters = JSON.stringify(data, null, 2);
-                const { prodMeter, gridMeter } = findProductionAndGridMeters(data);
-                if (prodMeter && gridMeter) {
-                    this.meters = data;
-                    this.prodPower = prodMeter.activePower || 0;
-                    this.gridPower = gridMeter.activePower || 0;
-                    this.consPower = this.prodPower + this.gridPower;
-                }
-
-                // Fetch canonical today's stats for the configured local date
                 const todayRes = await fetch('/api/history/today');
                 if (todayRes.ok) {
                     const todayData = await todayRes.json();
@@ -706,11 +768,58 @@ document.addEventListener('alpine:init', () => {
                     this.todayCoverage = todayData.solar_coverage_pct || 0;
                     this.todayStale = Boolean(todayData.is_stale);
                     this.hasTodayStats = Boolean(todayData.has_data);
+                    this.lastTodayFetchAt = Date.now();
+                }
+            } catch (err) {
+                console.error('Fetch today summary error:', err);
+            } finally {
+                this.todayInFlight = false;
+            }
+        },
+
+        async fetchMeters({ forceToday = false, pollGeneration = null } = {}) {
+            if (this.metersInFlight) {
+                if (pollGeneration !== null) {
+                    this.scheduleNextPoll(pollGeneration);
+                }
+                return;
+            }
+            this.metersInFlight = true;
+            this.loadingMeters = true;
+            try {
+                const shouldFetchToday =
+                    forceToday ||
+                    this.lastTodayFetchAt === 0 ||
+                    (Date.now() - this.lastTodayFetchAt) >= TODAY_SUMMARY_REFRESH_MS;
+
+                const metersPromise = (async () => {
+                    const res = await fetch('/api/meters');
+                    const data = await res.json();
+                    if (!res.ok) throw new Error(data.error || 'API Error');
+                    
+                    this.rawMeters = JSON.stringify(data, null, 2);
+                    const { prodMeter, gridMeter } = findProductionAndGridMeters(data);
+                    if (prodMeter && gridMeter) {
+                        this.meters = data;
+                        this.prodPower = prodMeter.activePower || 0;
+                        this.gridPower = gridMeter.activePower || 0;
+                        this.consPower = this.prodPower + this.gridPower;
+                    }
+                })();
+
+                if (shouldFetchToday) {
+                    await Promise.all([metersPromise, this.fetchTodaySummary(forceToday)]);
+                } else {
+                    await metersPromise;
                 }
             } catch (err) {
                 console.error('Fetch meters error:', err);
             } finally {
                 this.loadingMeters = false;
+                this.metersInFlight = false;
+                if (pollGeneration !== null) {
+                    this.scheduleNextPoll(pollGeneration);
+                }
             }
         },
         
@@ -721,7 +830,7 @@ document.addEventListener('alpine:init', () => {
             try {
                 const [resMeters, resHistory, resMonthly] = await Promise.all([
                     fetch('/api/meters'),
-                    fetch('/api/history/daily'),
+                    fetch('/api/history/daily?days=14'),
                     fetch('/api/history/monthly')
                 ]);
                 

@@ -1,14 +1,17 @@
 import os
 import time
 import json
+from datetime import date, datetime, timedelta, timezone
 from flask import Blueprint, jsonify, request, send_file, make_response, current_app
-from server.db import DailyStats
+from sqlalchemy import func, select
+from server.db import db, DailyStats
 from server.config import load_config, get_authenticated_gateway
 import server.trmnl_service as trmnl_service
 from server.dashboard_services import (
     get_meter_metadata,
     annotate_meter_readings,
     get_today_summary,
+    get_target_timezone,
 )
 from server.trmnl_service import (
     update_trmnl_display,
@@ -102,11 +105,72 @@ def today_history_api():
         return jsonify({"error": str(e)}), 500
 
 
+def _parse_iso_date(value, param_name):
+    try:
+        return date.fromisoformat(value)
+    except (TypeError, ValueError):
+        raise ValueError(f"Invalid '{param_name}' date format; expected YYYY-MM-DD.")
+
+
+def build_monthly_history_query():
+    """Build a portable SQL GROUP BY query aggregating DailyStats by year and month."""
+    year_expr = func.extract('year', DailyStats.date)
+    month_expr = func.extract('month', DailyStats.date)
+    return (
+        select(
+            year_expr.label('year'),
+            month_expr.label('month'),
+            func.coalesce(func.sum(DailyStats.production_kwh), 0.0).label('production_kwh'),
+            func.coalesce(func.sum(DailyStats.import_kwh), 0.0).label('import_kwh'),
+            func.coalesce(func.sum(DailyStats.export_kwh), 0.0).label('export_kwh'),
+            func.coalesce(func.sum(DailyStats.consumption_kwh), 0.0).label('consumption_kwh'),
+        )
+        .group_by(year_expr, month_expr)
+        .order_by(year_expr.asc(), month_expr.asc())
+    )
+
+
 @api_bp.route('/history/daily')
 def daily_history_api():
     try:
-        stats = DailyStats.query.order_by(DailyStats.date.asc()).all()
+        days_param = request.args.get('days')
+        start_param = request.args.get('start')
+        end_param = request.args.get('end')
+
+        start_date = _parse_iso_date(start_param, 'start') if start_param else None
+        end_date = _parse_iso_date(end_param, 'end') if end_param else None
+
+        if days_param is not None and days_param != '':
+            try:
+                days = int(days_param)
+            except ValueError:
+                return jsonify({"error": "Invalid 'days' parameter; must be a positive integer."}), 400
+            if days < 1:
+                return jsonify({"error": "Invalid 'days' parameter; must be >= 1."}), 400
+            if start_date is not None and end_date is not None:
+                return jsonify({"error": "Cannot combine 'days' with both 'start' and 'end'."}), 400
+
+            if end_date is not None:
+                start_date = end_date - timedelta(days=days - 1)
+            elif start_date is not None:
+                end_date = start_date + timedelta(days=days - 1)
+            else:
+                today_local = datetime.now(timezone.utc).astimezone(get_target_timezone()).date()
+                start_date = today_local - timedelta(days=days - 1)
+
+        if start_date is not None and end_date is not None and start_date > end_date:
+            return jsonify({"error": "'start' date must be on or before 'end' date."}), 400
+
+        query = DailyStats.query
+        if start_date is not None:
+            query = query.filter(DailyStats.date >= start_date)
+        if end_date is not None:
+            query = query.filter(DailyStats.date <= end_date)
+
+        stats = query.order_by(DailyStats.date.asc()).all()
         return jsonify([s.to_dict() for s in stats])
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -114,33 +178,17 @@ def daily_history_api():
 @api_bp.route('/history/monthly')
 def monthly_history_api():
     try:
-        stats = DailyStats.query.order_by(DailyStats.date.asc()).all()
-        monthly_data = {}
-        for s in stats:
-            month_str = s.date.strftime('%Y-%m')
-            if month_str not in monthly_data:
-                monthly_data[month_str] = {
-                    'month': month_str,
-                    'production_kwh': 0.0,
-                    'import_kwh': 0.0,
-                    'export_kwh': 0.0,
-                    'consumption_kwh': 0.0
-                }
-            monthly_data[month_str]['production_kwh'] += s.production_kwh
-            monthly_data[month_str]['import_kwh'] += s.import_kwh
-            monthly_data[month_str]['export_kwh'] += s.export_kwh
-            monthly_data[month_str]['consumption_kwh'] += s.consumption_kwh
-
-        result = []
-        for month in sorted(monthly_data.keys()):
-            m_data = monthly_data[month]
-            result.append({
-                'month': m_data['month'],
-                'production_kwh': round(m_data['production_kwh'], 2),
-                'import_kwh': round(m_data['import_kwh'], 2),
-                'export_kwh': round(m_data['export_kwh'], 2),
-                'consumption_kwh': round(m_data['consumption_kwh'], 2)
-            })
+        rows = db.session.execute(build_monthly_history_query()).all()
+        result = [
+            {
+                'month': f"{int(row.year):04d}-{int(row.month):02d}",
+                'production_kwh': round(float(row.production_kwh), 2),
+                'import_kwh': round(float(row.import_kwh), 2),
+                'export_kwh': round(float(row.export_kwh), 2),
+                'consumption_kwh': round(float(row.consumption_kwh), 2),
+            }
+            for row in rows
+        ]
         return jsonify(result)
     except Exception as e:
         return jsonify({"error": str(e)}), 500

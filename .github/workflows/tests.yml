@@ -31,5 +31,7 @@ jobs:
       - name: Run Python unit tests
         run: python -m unittest discover -s tests -v
 
-      - name: Check JavaScript syntax
-        run: node --check static/js/dashboard.js
+      - name: Check JavaScript syntax and run frontend polling tests
+        run: |
+          node --check static/js/dashboard.js
+          node --test tests/test_dashboard_polling.js

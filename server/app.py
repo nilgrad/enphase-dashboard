@@ -42,7 +42,7 @@ app.register_blueprint(api_bp)
 # Add backwards-compatibility aliases for view functions in url_map/view_functions
 for endpoint in [
     'production_api', 'meters_api', 'inventory_api', 'events_api',
-    'connectivity_api', 'daily_history_api', 'monthly_history_api',
+    'connectivity_api', 'today_history_api', 'daily_history_api', 'monthly_history_api',
     'refresh_history_api', 'trmnl_setup_api', 'trmnl_display_api',
     'trmnl_current_png', 'trmnl_current_bmp', 'trmnl_log_api', 'trmnl_status_api'
 ]:
