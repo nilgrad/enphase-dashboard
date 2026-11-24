@@ -15,7 +15,7 @@
 <div class="data-box" x-show="phases.length > 0" style="padding: 1.1rem 1.1rem 0.25rem 1.1rem;">
     <template x-for="(meter, idx) in phases" :key="meter.eid">
         <div style="margin-bottom: 2rem;">
-            <h3 x-text="idx === 0 ? 'Production Meter' : 'Grid Meter'" style="color: var(--primary); border-bottom: 2px solid var(--border-card); padding-bottom: 0.5rem; margin-top: 0;"></h3>
+            <h3 x-text="formatMeterName(meter, idx)" style="color: var(--primary); border-bottom: 2px solid var(--border-card); padding-bottom: 0.5rem; margin-top: 0;"></h3>
             <table style="width: 100%; border-collapse: collapse; margin-bottom: 1.5rem; text-align: left;">
                 <thead>
                     <tr style="border-bottom: 2px solid var(--border-card); font-weight: bold; color: var(--text-main);">

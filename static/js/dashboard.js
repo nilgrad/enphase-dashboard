@@ -36,6 +36,21 @@ function formatPower(watts) {
     return watts.toFixed(0) + ' W';
 }
 
+function findProductionAndGridMeters(data) {
+    if (!Array.isArray(data) || data.length < 2) {
+        return { prodMeter: null, gridMeter: null };
+    }
+    const findByType = (type) =>
+        data.find(m => m && m.measurementType === type && (m.meterState || 'enabled') === 'enabled') ||
+        data.find(m => m && m.measurementType === type);
+    const prodMeter = findByType('production') || data[0];
+    const gridMeter =
+        findByType('net-consumption') ||
+        findByType('total-consumption') ||
+        (data[1] !== prodMeter ? data[1] : data[0]);
+    return { prodMeter, gridMeter };
+}
+
 function calculateLinearRegression(x, y) {
     const n = x.length;
     if (n === 0) return [];
@@ -515,8 +530,10 @@ document.addEventListener('alpine:init', () => {
         todayImport: 0,
         todayExport: 0,
         todayNetGrid: 0,
+        todayIsNetExport: true,
         todayConsumption: 0,
         todayCoverage: 0,
+        todayStale: false,
         hasTodayStats: false,
         
         // Summary state
@@ -651,7 +668,14 @@ document.addEventListener('alpine:init', () => {
             if (!val) return false;
             return ['connected', 'ok', 'configured', 'enabled'].includes(val.toLowerCase());
         },
-        
+
+        formatMeterName(meter, idx) {
+            if (meter && meter.measurementType === 'production') return 'Production Meter';
+            if (meter && meter.measurementType === 'net-consumption') return 'Grid Meter';
+            if (meter && meter.measurementType === 'total-consumption') return 'Consumption Meter';
+            return idx === 0 ? 'Production Meter' : 'Grid Meter';
+        },
+
         async fetchMeters() {
             this.loadingMeters = true;
             try {
@@ -660,32 +684,28 @@ document.addEventListener('alpine:init', () => {
                 if (!res.ok) throw new Error(data.error || 'API Error');
                 
                 this.rawMeters = JSON.stringify(data, null, 2);
-                if (data.length >= 2) {
+                const { prodMeter, gridMeter } = findProductionAndGridMeters(data);
+                if (prodMeter && gridMeter) {
                     this.meters = data;
-                    this.prodPower = data[0].activePower || 0;
-                    this.gridPower = data[1].activePower || 0;
+                    this.prodPower = prodMeter.activePower || 0;
+                    this.gridPower = gridMeter.activePower || 0;
                     this.consPower = this.prodPower + this.gridPower;
                 }
 
-                // Fetch daily history to extract today's stats
-                const historyRes = await fetch('/api/history/daily');
-                if (historyRes.ok) {
-                    const historyData = await historyRes.json();
-                    if (historyData && historyData.length > 0) {
-                        const lastEntry = historyData[historyData.length - 1];
-                        this.todayDate = lastEntry.date || '';
-                        this.todayProduction = lastEntry.production_kwh || 0;
-                        this.todayImport = lastEntry.import_kwh || 0;
-                        this.todayExport = lastEntry.export_kwh || 0;
-                        this.todayNetGrid = this.todayImport - this.todayExport;
-                        this.todayConsumption = lastEntry.consumption_kwh || 0;
-                        this.todayCoverage = this.todayConsumption > 0 
-                            ? (this.todayProduction / this.todayConsumption * 100)
-                            : 0;
-                        this.hasTodayStats = true;
-                    } else {
-                        this.hasTodayStats = false;
-                    }
+                // Fetch canonical today's stats for the configured local date
+                const todayRes = await fetch('/api/history/today');
+                if (todayRes.ok) {
+                    const todayData = await todayRes.json();
+                    this.todayDate = todayData.date || '';
+                    this.todayProduction = todayData.production_kwh || 0;
+                    this.todayImport = todayData.import_kwh || 0;
+                    this.todayExport = todayData.export_kwh || 0;
+                    this.todayNetGrid = todayData.net_grid_kwh || 0;
+                    this.todayIsNetExport = todayData.is_net_export ?? (this.todayNetGrid >= 0);
+                    this.todayConsumption = todayData.consumption_kwh || 0;
+                    this.todayCoverage = todayData.solar_coverage_pct || 0;
+                    this.todayStale = Boolean(todayData.is_stale);
+                    this.hasTodayStats = Boolean(todayData.has_data);
                 }
             } catch (err) {
                 console.error('Fetch meters error:', err);
@@ -710,10 +730,11 @@ document.addEventListener('alpine:init', () => {
 
                 this.rawSummary = JSON.stringify(data, null, 2);
                 
-                if (data.length >= 2) {
-                    const lifetimeProduction = data[0].actEnergyDlvd || 0;
-                    const lifetimeImport = data[1].actEnergyDlvd || 0;
-                    const lifetimeExport = data[1].actEnergyRcvd || 0;
+                const { prodMeter, gridMeter } = findProductionAndGridMeters(data);
+                if (prodMeter && gridMeter) {
+                    const lifetimeProduction = prodMeter.actEnergyDlvd || 0;
+                    const lifetimeImport = gridMeter.actEnergyDlvd || 0;
+                    const lifetimeExport = gridMeter.actEnergyRcvd || 0;
                     const lifetimeConsumption = lifetimeProduction - lifetimeExport + lifetimeImport;
                     
                     const formatEnergy = (wh) => {
@@ -802,7 +823,17 @@ document.addEventListener('alpine:init', () => {
                 if (!res.ok) throw new Error(data.error || 'API Error');
 
                 this.rawPhases = JSON.stringify(data, null, 2);
-                this.phases = data.filter(m => m.eid !== 1023410688 && m.channels);
+                const activePhaseMeters = data.filter(m => {
+                    if (!Array.isArray(m.channels) || m.channels.length === 0) return false;
+                    if (m.meterState && m.meterState !== 'enabled') return false;
+                    if (m.measurementType) {
+                        return ['production', 'net-consumption'].includes(m.measurementType);
+                    }
+                    return true;
+                });
+                this.phases = activePhaseMeters.length > 0
+                    ? activePhaseMeters
+                    : data.filter(m => Array.isArray(m.channels) && m.channels.length > 0);
             } catch (err) {
                 console.error('Fetch phases error:', err);
             } finally {
