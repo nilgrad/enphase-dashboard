@@ -21,5 +21,5 @@ COPY . .
 EXPOSE 5000
 
 # Run the application using a production WSGI server (Gunicorn)
-# Limit to 1 worker to prevent duplicate APScheduler instances
-CMD ["gunicorn", "--workers", "1", "--bind", "0.0.0.0:5000", "server.app:app"]
+# Limit to 1 worker to prevent duplicate APScheduler instances; use threads for concurrency
+CMD ["gunicorn", "--workers", "1", "--threads", "4", "--timeout", "60", "--bind", "0.0.0.0:5000", "server.app:app"]
