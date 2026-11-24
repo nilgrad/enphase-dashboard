@@ -6,11 +6,13 @@ PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
 
-from flask import Flask, render_template
+from flask import Flask, render_template, send_file, make_response
 from flask_apscheduler import APScheduler
+from werkzeug.middleware.proxy_fix import ProxyFix
 from server.db import db, MeterReading
 from server.config import load_config, load_specs
 from server.api import api_bp
+import server.trmnl_service as trmnl_service
 from server.trmnl_service import update_trmnl_display, load_trmnl_telemetry
 
 # Configure Flask app with explicit template, static, and instance paths
@@ -25,6 +27,40 @@ app = Flask(
     instance_path=instance_dir
 )
 
+def configure_proxy_fix(flask_app, config=None):
+    """Wrap WSGI app in Werkzeug ProxyFix only when explicitly configured."""
+    trusted_proxies = 0
+    env_val = os.environ.get('TRUST_PROXY_COUNT')
+    if env_val is not None and str(env_val).strip() != '':
+        try:
+            trusted_proxies = int(env_val)
+        except ValueError:
+            trusted_proxies = 0
+    else:
+        cfg = config if config is not None else load_config()
+        proxy_cfg = cfg.get('reverse_proxy') if isinstance(cfg, dict) else None
+        if isinstance(proxy_cfg, dict):
+            raw = proxy_cfg.get('trusted_proxies', 0)
+        elif isinstance(cfg, dict):
+            raw = cfg.get('trusted_proxies', 0)
+        else:
+            raw = 0
+        try:
+            trusted_proxies = int(raw)
+        except (TypeError, ValueError):
+            trusted_proxies = 0
+
+    if trusted_proxies > 0:
+        flask_app.wsgi_app = ProxyFix(
+            flask_app.wsgi_app,
+            x_for=trusted_proxies,
+            x_proto=trusted_proxies,
+            x_host=trusted_proxies,
+            x_prefix=trusted_proxies,
+        )
+    return trusted_proxies
+
+
 # Database configuration
 database_url = os.environ.get('DATABASE_URL', 'sqlite:///enphase.db')
 if database_url.startswith("postgres://"):
@@ -32,7 +68,10 @@ if database_url.startswith("postgres://"):
 
 app.config['SQLALCHEMY_DATABASE_URI'] = database_url
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-app.config['SCHEDULER_API_ENABLED'] = True
+app.config['SCHEDULER_API_ENABLED'] = False
+app.config['MAX_CONTENT_LENGTH'] = 1 * 1024 * 1024  # 1 MiB global request size cap
+
+configure_proxy_fix(app)
 
 db.init_app(app)
 
@@ -70,6 +109,30 @@ def trmnl_preview_page():
     refresh_rate_min = max(1, refresh_rate_sec // 60)
     telemetry = load_trmnl_telemetry()
     return render_template('trmnl.html', telemetry=telemetry, refresh_rate_min=refresh_rate_min)
+
+
+@app.route('/trmnl/preview.png', methods=['GET'])
+def trmnl_preview_png():
+    png_path = trmnl_service.OUTPUT_IMAGE_PATH
+    if not os.path.exists(png_path):
+        update_trmnl_display(app)
+    response = make_response(send_file(png_path, mimetype='image/png'))
+    response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+    response.headers['Pragma'] = 'no-cache'
+    response.headers['Expires'] = '0'
+    return response
+
+
+@app.route('/trmnl/preview.bmp', methods=['GET'])
+def trmnl_preview_bmp():
+    bmp_path = trmnl_service.OUTPUT_BMP_PATH
+    if not os.path.exists(bmp_path):
+        update_trmnl_display(app)
+    response = make_response(send_file(bmp_path, mimetype='image/bmp'))
+    response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+    response.headers['Pragma'] = 'no-cache'
+    response.headers['Expires'] = '0'
+    return response
 
 
 # Scheduled job definitions

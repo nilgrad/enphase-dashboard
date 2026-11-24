@@ -5,12 +5,21 @@ gateway_token: "YOUR_BEARER_TOKEN_HERE"
 # gateway_timeout: 10              # HTTP timeout (seconds) for Enphase Gateway requests
 timezone: "America/New_York"
 
+# Reverse proxy configuration (set trusted_proxies > 0 only when behind a reverse proxy)
+# reverse_proxy:
+#   trusted_proxies: 0
+
+# Minimum cooldown (seconds) between manual POST /api/history/refresh triggers
+# history_refresh_cooldown_seconds: 30
+
 # TRMNL e-ink display configuration
 trmnl:
   enabled: true
   refresh_rate_seconds: 600       # How often the TRMNL device wakes up to pull a new screen (in seconds, e.g. 600 = 10 min)
   render_interval_minutes: 10    # How often the background job re-renders the image
-  api_key: "local-trmnl-token"   # Optional device API key / access token
+  api_key: "CHANGE_ME_TRMNL_API_KEY"  # Required device Access-Token for TRMNL API endpoints
+  setup_enabled: false           # Set to true temporarily only while pairing a new TRMNL device via /api/setup
+  allowed_macs: []               # Optional list of device MAC IDs permitted to use /api/setup (e.g. ["AA:BB:CC:DD:EE:FF"])
   title: "DAILY SOLAR STATUS"    # Screen title
 
 

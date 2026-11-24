@@ -457,7 +457,11 @@ class ApiAndRecordReadingTests(unittest.TestCase):
             ],
         ]
 
+        test_cfg = {'trmnl': {'api_key': 'test-trmnl-secret', 'refresh_rate_seconds': 600}}
+        auth_headers = {'Access-Token': 'test-trmnl-secret'}
+
         with patch('server.dashboard_services.get_gateway_readings', side_effect=samples), \
+             patch('server.api.load_config', return_value=test_cfg), \
              patch.object(trmnl_service, 'OUTPUT_IMAGE_PATH', png_path), \
              patch.object(trmnl_service, 'OUTPUT_BMP_PATH', bmp_path), \
              patch.object(trmnl_service, 'TELEMETRY_PATH', telemetry_path), \
@@ -473,18 +477,21 @@ class ApiAndRecordReadingTests(unittest.TestCase):
                 self.assertAlmostEqual(stats.export_kwh, 2.0, places=5)
                 self.assertAlmostEqual(stats.consumption_kwh, 2.0, places=5)
 
-            resp = self.client.get('/api/display', headers={'ID': '11:22:33', 'Battery-Voltage': '4.0', 'RSSI': '-65'})
+            resp = self.client.get(
+                '/api/display',
+                headers={**auth_headers, 'ID': '11:22:33', 'Battery-Voltage': '4.0', 'RSSI': '-65'},
+            )
             self.assertEqual(resp.status_code, 200)
             payload = resp.get_json()
             self.assertEqual(payload['status'], 0)
             self.assertTrue(payload['filename'].startswith('solar_'))
 
-            bmp_resp = self.client.get('/api/display/current.bmp')
+            bmp_resp = self.client.get('/api/display/current.bmp', headers=auth_headers)
             self.assertEqual(bmp_resp.status_code, 200)
             self.assertEqual(bmp_resp.mimetype, 'image/bmp')
             bmp_resp.close()
 
-            png_resp = self.client.get('/api/display/current.png')
+            png_resp = self.client.get('/api/display/current.png', headers=auth_headers)
             self.assertEqual(png_resp.status_code, 200)
             self.assertEqual(png_resp.mimetype, 'image/png')
             png_resp.close()
