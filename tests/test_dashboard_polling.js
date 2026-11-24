@@ -7,12 +7,13 @@ const vm = require('node:vm');
 const DASHBOARD_JS_PATH = path.resolve(__dirname, '..', 'static', 'js', 'dashboard.js');
 const DASHBOARD_SOURCE = fs.readFileSync(DASHBOARD_JS_PATH, 'utf8');
 
-function createHarness({ initialHidden = false, fetchImpl } = {}) {
+function createHarness({ initialHidden = false, initialHash = '', fetchImpl } = {}) {
     let nowMs = 1_700_000_000_000;
     let nextTimerId = 1;
     const timeouts = new Map();
     const intervals = new Map();
     const docListeners = new Map();
+    const winListeners = new Map();
     const watchers = new Map();
 
     const document = {
@@ -33,7 +34,20 @@ function createHarness({ initialHidden = false, fetchImpl } = {}) {
         },
     };
 
-    const windowObj = { location: { hash: '' } };
+    const windowObj = {
+        location: { hash: initialHash },
+        addEventListener(type, fn) {
+            if (!winListeners.has(type)) winListeners.set(type, new Set());
+            winListeners.get(type).add(fn);
+        },
+        removeEventListener(type, fn) {
+            if (winListeners.has(type)) winListeners.get(type).delete(fn);
+        },
+        dispatchEvent(type) {
+            const listeners = winListeners.get(type) || new Set();
+            for (const fn of [...listeners]) fn();
+        },
+    };
 
     let registeredFactory = null;
     const Alpine = {
@@ -67,7 +81,8 @@ function createHarness({ initialHidden = false, fetchImpl } = {}) {
         document,
         window: windowObj,
         Alpine,
-        Chart: function FakeChart() {
+        Chart: function FakeChart(ctx, cfg) {
+            this.cfg = cfg;
             this.destroy = () => {};
         },
         fetch: fetchImpl,
@@ -93,7 +108,17 @@ function createHarness({ initialHidden = false, fetchImpl } = {}) {
     document.dispatchEvent('alpine:init');
     assert.ok(registeredFactory, 'dashboard Alpine component should register on alpine:init');
 
-    const component = registeredFactory();
+    const rawComponent = registeredFactory();
+    const component = new Proxy(rawComponent, {
+        set(target, prop, value) {
+            const prev = target[prop];
+            target[prop] = value;
+            if (prev !== value && watchers.has(prop)) {
+                watchers.get(prop)(value, prev);
+            }
+            return true;
+        },
+    });
     component.$watch = (prop, cb) => watchers.set(prop, cb);
     component.$nextTick = (cb) => cb();
 
@@ -124,8 +149,10 @@ function createHarness({ initialHidden = false, fetchImpl } = {}) {
     };
 
     return {
+        context,
         component,
         document,
+        window: windowObj,
         timeouts,
         intervals,
         watchers,
@@ -135,13 +162,26 @@ function createHarness({ initialHidden = false, fetchImpl } = {}) {
             document.hidden = hidden;
             document.dispatchEvent('visibilitychange');
         },
+        navigateHash(hash) {
+            windowObj.location.hash = hash;
+            windowObj.dispatchEvent('hashchange');
+        },
     };
 }
 
 function okJson(payload) {
     return Promise.resolve({
         ok: true,
+        status: 200,
         json: () => Promise.resolve(payload),
+    });
+}
+
+function errJson(status, message) {
+    return Promise.resolve({
+        ok: false,
+        status,
+        json: () => Promise.resolve({ error: message }),
     });
 }
 
@@ -214,7 +254,7 @@ test('in-flight guard and chained setTimeout prevent overlapping fetchMeters cal
                 return new Promise((resolve) => {
                     pendingResolvers.push(() => {
                         activeMetersFetches -= 1;
-                        resolve({ ok: true, json: () => Promise.resolve(SAMPLE_METERS) });
+                        resolve({ ok: true, status: 200, json: () => Promise.resolve(SAMPLE_METERS) });
                     });
                 });
             }
@@ -306,4 +346,103 @@ test('fetchSummary requests only the 14-day window via /api/history/daily?days=1
     await component.fetchSummary();
     assert.ok(calls.includes('/api/history/daily?days=14'), `Expected /api/history/daily?days=14 in ${JSON.stringify(calls)}`);
     assert.ok(calls.includes('/api/history/monthly'));
+});
+
+test('API failures populate inline error banner state and clear on recovery', async () => {
+    let failMeters = true;
+    const harness = createHarness({
+        fetchImpl(url) {
+            if (url === '/api/meters') {
+                return failMeters
+                    ? errJson(504, 'Enphase Gateway request timed out.')
+                    : okJson(SAMPLE_METERS);
+            }
+            if (url === '/api/history/today') return okJson(SAMPLE_TODAY);
+            if (url === '/api/history/refresh') return errJson(429, 'Refresh rate limited.');
+            return okJson([]);
+        },
+    });
+
+    const { component, flushMicrotasks } = harness;
+    component.refreshRate = 0;
+    component.init();
+    await flushMicrotasks();
+
+    assert.ok(component.errorMessage && component.errorMessage.includes('timed out'));
+
+    // Recovery clears error banner automatically
+    failMeters = false;
+    await component.fetchMeters();
+    assert.equal(component.errorMessage, null);
+
+    // Sync failure surfaces inline error without calling window.alert
+    await component.syncDatabase();
+    assert.ok(component.errorMessage && component.errorMessage.includes('rate limited'));
+    component.clearError();
+    assert.equal(component.errorMessage, null);
+});
+
+test('hashchange listener syncs activeTab on browser Back/Forward navigation', async () => {
+    const calls = [];
+    const harness = createHarness({
+        fetchImpl(url) {
+            calls.push(url);
+            if (url === '/api/meters') return okJson(SAMPLE_METERS);
+            if (url === '/api/history/today') return okJson(SAMPLE_TODAY);
+            return okJson([]);
+        },
+    });
+
+    const { component, flushMicrotasks, navigateHash } = harness;
+    component.refreshRate = 0;
+    component.init();
+    await flushMicrotasks();
+    assert.equal(component.activeTab, 'live-tab');
+
+    // Navigate forward to history-tab via hashchange
+    calls.length = 0;
+    navigateHash('#history-tab');
+    await flushMicrotasks();
+    assert.equal(component.activeTab, 'history-tab');
+    assert.ok(calls.includes('/api/history/daily'));
+
+    // Navigate back to empty/invalid hash -> falls back to live-tab
+    navigateHash('');
+    await flushMicrotasks();
+    assert.equal(component.activeTab, 'live-tab');
+});
+
+test('shared effectiveness chart builder guards Math.max against empty arrays', () => {
+    const harness = createHarness({ fetchImpl: () => okJson([]) });
+    const { buildEffectivenessChartConfig, formatChartDate, formatChartDateLong } = harness.context;
+
+    const emptyCfg = buildEffectivenessChartConfig([], {
+        sliceCount: 14,
+        barFillAlpha: 0.15,
+        pointRadius: 4,
+        pointHoverRadius: 6,
+        yAxisTitle: 'Daily Energy (kWh)',
+        formatLabel: d => formatChartDate(d.date),
+        formatTooltipTitle: d => formatChartDateLong(d.date),
+        formatEnergyValue: y => y.toFixed(2) + ' kWh',
+    });
+
+    assert.equal(emptyCfg.options.scales.y1.max, 100);
+    assert.deepEqual(emptyCfg.data.labels, []);
+
+    const highCfg = buildEffectivenessChartConfig(
+        [{ date: '2026-06-10', production_kwh: 35, import_kwh: 2, consumption_kwh: 20 }],
+        {
+            sliceCount: 14,
+            barFillAlpha: 0.15,
+            pointRadius: 4,
+            pointHoverRadius: 6,
+            yAxisTitle: 'Daily Energy (kWh)',
+            formatLabel: d => formatChartDate(d.date),
+            formatTooltipTitle: d => formatChartDateLong(d.date),
+            formatEnergyValue: y => y.toFixed(2) + ' kWh',
+        }
+    );
+    // 35/20 * 100 = 175% -> rounded up to nearest 50 = 200
+    assert.equal(highCfg.options.scales.y1.max, 200);
 });

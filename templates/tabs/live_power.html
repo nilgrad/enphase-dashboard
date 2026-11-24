@@ -1,7 +1,7 @@
 <div class="tab-header">
-    <h2 style="margin: 0;">Real-Time Meter Readings</h2>
+    <h2>Real-Time Meter Readings</h2>
     <div class="tab-controls">
-        <label style="font-size: 0.9rem; font-weight: bold;">Auto-Refresh:</label>
+        <label class="control-label">Auto-Refresh:</label>
         <select x-model.number="refreshRate" @change="updateRefreshInterval()">
             <option value="0">Off</option>
             <option value="1000">1 Second</option>
@@ -26,69 +26,65 @@
     <div class="live-card">
         <div>
             <div class="live-label">Solar Production</div>
-            <div class="live-subtext" style="font-size:0.85rem; color: var(--text-muted);">Generating power from panels</div>
+            <div class="live-subtext">Generating power from panels</div>
         </div>
-        <div class="live-val" style="color: var(--success);" x-text="formatPower(prodPower)">0 W</div>
+        <div class="live-val text-success" x-text="formatPower(prodPower)">0 W</div>
     </div>
 
     <!-- 2. Grid Flow -->
     <div class="live-card">
         <div>
             <div class="live-label" x-text="gridPower < 0 ? 'Exporting to Grid' : 'Importing from Grid'">Grid Flow</div>
-            <div class="live-subtext" style="font-size:0.85rem; color: var(--text-muted);">Net flow at the meter</div>
+            <div class="live-subtext">Net flow at the meter</div>
         </div>
-        <div class="live-val" :style="{ color: gridPower < 0 ? 'var(--success)' : 'var(--danger)' }" x-text="formatPower(Math.abs(gridPower))">0 W</div>
+        <div class="live-val" :class="gridPower < 0 ? 'text-success' : 'text-danger'" x-text="formatPower(Math.abs(gridPower))">0 W</div>
     </div>
 
     <!-- 3. Consumption -->
-    <div class="live-card" style="background: var(--accent-light); border-top: 2px solid var(--accent); margin-top: 0.75rem;">
+    <div class="live-card live-card-consumption">
         <div>
             <div class="live-label">House Consumption</div>
-            <div class="live-subtext" style="font-size:0.85rem; color: var(--text-muted);">Total power being used by home</div>
+            <div class="live-subtext">Total power being used by home</div>
         </div>
-        <div class="live-val" style="color: var(--accent);" x-text="formatPower(consPower)">0 W</div>
+        <div class="live-val text-accent" x-text="formatPower(consPower)">0 W</div>
     </div>
 </div>
 
 <!-- Daily Solar Status -->
-<div class="data-box" x-show="todayDate" style="margin-top: 1rem;">
-    <h3 style="margin-top: 0; color: var(--text-main); font-weight: 700; display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; font-size: 1.1rem; margin-bottom: 0.75rem;">
-        Daily Solar Status <span style="font-size: 0.8rem; font-weight: normal; color: var(--text-muted);" x-text="'(' + formatDateLong(todayDate) + ')'"></span>
-        <span class="status-tag tag-sm" style="background: var(--warning-light); color: #92400e; border: 1px solid #fef3c7;" x-show="todayStale && hasTodayStats">Stale</span>
-        <span class="status-tag tag-sm" style="background: var(--accent-light); color: var(--text-muted); border: 1px solid var(--accent-border);" x-show="!hasTodayStats">Awaiting today's readings</span>
+<div class="data-box mt-1" x-show="todayDate">
+    <h3 class="section-heading-row">
+        Daily Solar Status <span class="section-date-label" x-text="'(' + formatDateLong(todayDate) + ')'"></span>
+        <span class="status-tag tag-sm status-tag-warn" x-show="todayStale && hasTodayStats">Stale</span>
+        <span class="status-tag tag-sm status-tag-muted" x-show="!hasTodayStats">Awaiting today's readings</span>
     </h3>
     <div class="live-metric-grid">
-        <div class="metric-card solar" style="padding: 0.6rem 0.75rem;">
-            <div class="metric-card-title" style="font-size: 0.65rem; margin-bottom: 0.15rem;">Solar Production</div>
-            <div class="metric-card-value" style="font-size: 1.2rem;" x-text="todayProduction.toFixed(2) + ' kWh'">0.00 kWh</div>
+        <div class="metric-card solar live-metric-card">
+            <div class="metric-card-title live-metric-title">Solar Production</div>
+            <div class="metric-card-value live-metric-value" x-text="todayProduction.toFixed(2) + ' kWh'">0.00 kWh</div>
         </div>
-        <div class="metric-card consumed" style="padding: 0.6rem 0.75rem;">
-            <div class="metric-card-title" style="font-size: 0.65rem; margin-bottom: 0.15rem;">House Consumption</div>
-            <div class="metric-card-value" style="font-size: 1.2rem;" x-text="todayConsumption.toFixed(2) + ' kWh'">0.00 kWh</div>
+        <div class="metric-card consumed live-metric-card">
+            <div class="metric-card-title live-metric-title">House Consumption</div>
+            <div class="metric-card-value live-metric-value" x-text="todayConsumption.toFixed(2) + ' kWh'">0.00 kWh</div>
         </div>
-        <div class="metric-card exported" style="padding: 0.6rem 0.75rem;">
-            <div class="metric-card-title" style="font-size: 0.65rem; margin-bottom: 0.15rem;">Grid Exported</div>
-            <div class="metric-card-value" style="font-size: 1.2rem;" x-text="todayExport.toFixed(2) + ' kWh'">0.00 kWh</div>
+        <div class="metric-card exported live-metric-card">
+            <div class="metric-card-title live-metric-title">Grid Exported</div>
+            <div class="metric-card-value live-metric-value" x-text="todayExport.toFixed(2) + ' kWh'">0.00 kWh</div>
         </div>
-        <div class="metric-card" 
-             :style="{ borderLeft: todayNetGrid > 0 ? '4px solid var(--success)' : (todayNetGrid < 0 ? '4px solid var(--danger)' : '4px solid var(--accent)') }"
-             style="padding: 0.6rem 0.75rem;">
-            <div class="metric-card-title" style="font-size: 0.65rem; margin-bottom: 0.15rem;">Net Grid Flow</div>
-            <div class="metric-card-value" 
-                 :style="{ color: todayNetGrid > 0 ? 'var(--success)' : (todayNetGrid < 0 ? 'var(--danger)' : 'var(--text-main)') }"
-                 style="font-size: 1.2rem;" 
+        <div class="metric-card live-metric-card"
+             :class="todayNetGrid > 0 ? 'solar' : (todayNetGrid < 0 ? 'imported' : 'consumed')">
+            <div class="metric-card-title live-metric-title">Net Grid Flow</div>
+            <div class="metric-card-value live-metric-value"
                  x-text="(todayNetGrid >= 0 ? '+' : '-') + Math.abs(todayNetGrid).toFixed(2) + (todayNetGrid >= 0 ? ' kWh Export' : ' kWh Import')">
                 +0.00 kWh Export
             </div>
         </div>
-        <div class="metric-card consumed" style="padding: 0.6rem 0.75rem;">
-            <div class="metric-card-title" style="font-size: 0.65rem; margin-bottom: 0.15rem;">Grid Imported</div>
-            <div class="metric-card-value" style="font-size: 1.2rem;" x-text="todayImport.toFixed(2) + ' kWh'">0.00 kWh</div>
+        <div class="metric-card consumed live-metric-card">
+            <div class="metric-card-title live-metric-title">Grid Imported</div>
+            <div class="metric-card-value live-metric-value" x-text="todayImport.toFixed(2) + ' kWh'">0.00 kWh</div>
         </div>
-        <div class="metric-card offset" style="padding: 0.6rem 0.75rem;">
-            <div class="metric-card-title" style="font-size: 0.65rem; margin-bottom: 0.15rem;">Solar Coverage</div>
-            <div class="metric-card-value" style="font-size: 1.2rem;" x-text="todayCoverage.toFixed(1) + '%'">0.0%</div>
+        <div class="metric-card offset live-metric-card">
+            <div class="metric-card-title live-metric-title">Solar Coverage</div>
+            <div class="metric-card-value live-metric-value" x-text="todayCoverage.toFixed(1) + '%'">0.0%</div>
         </div>
     </div>
 </div>
-

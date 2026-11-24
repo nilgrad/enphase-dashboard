@@ -7,15 +7,15 @@
 
 {% if not specs %}
 <div class="data-box">
-    <p style="margin: 0; color: var(--text-muted);">
+    <p class="mt-0 mb-0 text-muted">
         No system specifications configured yet. Copy <code>configuration/system_template.yml</code> to <code>configuration/system.yml</code> to display your hardware details here.
     </p>
 </div>
 {% else %}
 <div class="data-box">
     {% if overview %}
-    <h3 style="color: var(--primary); border-bottom: 2px solid var(--border-card); padding-bottom: 0.5rem;">System Overview</h3>
-    <div class="responsive-grid" style="margin-bottom: 1.5rem; gap: 1rem;">
+    <h3 class="section-divider-heading">System Overview</h3>
+    <div class="responsive-grid specs-grid mb-1-5">
         <div>
             <strong>System Capacity:</strong> {{ overview.get('capacity_dc', 'N/A') }}<br>
             <strong>Number of Panels:</strong> {{ overview.get('panel_count', 'N/A') }}<br>
@@ -30,8 +30,8 @@
     {% endif %}
 
     {% if gw_info %}
-    <h3 style="color: var(--primary); border-bottom: 2px solid var(--border-card); padding-bottom: 0.5rem;">Gateway Information</h3>
-    <div class="responsive-grid" style="margin-bottom: 1.5rem; gap: 1rem;">
+    <h3 class="section-divider-heading">Gateway Information</h3>
+    <div class="responsive-grid specs-grid mb-1-5">
         <div>
             <strong>Device Type:</strong> {{ gw_info.get('device_type', 'N/A') }}<br>
             <strong>API Version:</strong> {{ gw_info.get('api_version', 'N/A') }}
@@ -45,12 +45,12 @@
 
     {% if electrical or physical_thermal %}
     {% set panel_heading = panel.get('title') or ((overview.get('panel_model') ~ ' Technical Stats') if overview.get('panel_model') else 'Panel Technical Stats') %}
-    <h3 style="color: var(--primary); border-bottom: 2px solid var(--border-card); padding-bottom: 0.5rem;">{{ panel_heading }}</h3>
-    <div class="responsive-grid" style="gap: 1rem;">
+    <h3 class="section-divider-heading">{{ panel_heading }}</h3>
+    <div class="responsive-grid specs-grid">
         {% if electrical %}
         <div>
-            <h4 style="margin-bottom: 0.5rem;">Electrical Specs</h4>
-            <ul style="margin-top: 0; padding-left: 1.2rem;">
+            <h4 class="specs-subheading">Electrical Specs</h4>
+            <ul class="specs-list">
                 {% for spec in electrical %}
                 <li>{{ spec.label }}: {{ spec.value }}</li>
                 {% endfor %}
@@ -59,8 +59,8 @@
         {% endif %}
         {% if physical_thermal %}
         <div>
-            <h4 style="margin-bottom: 0.5rem;">Physical &amp; Thermal</h4>
-            <ul style="margin-top: 0; padding-left: 1.2rem;">
+            <h4 class="specs-subheading">Physical &amp; Thermal</h4>
+            <ul class="specs-list">
                 {% for spec in physical_thermal %}
                 <li>{{ spec.label }}: {{ spec.value }}</li>
                 {% endfor %}

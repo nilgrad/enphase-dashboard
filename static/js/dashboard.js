@@ -2,6 +2,22 @@ let historyChartInstance = null;
 let effectivenessChartInstance = null;
 let monthlyChartInstance = null;
 const TODAY_SUMMARY_REFRESH_MS = 60000;
+const VALID_TABS = [
+    'live-tab',
+    'summary-tab',
+    'history-tab',
+    'phase-tab',
+    'health-tab',
+    'connectivity-tab',
+    'events-tab',
+    'specs-tab',
+];
+
+const SHORT_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const LONG_MONTHS = [
+    'January', 'February', 'March', 'April', 'May', 'June',
+    'July', 'August', 'September', 'October', 'November', 'December',
+];
 
 function formatChartDate(dateStr) {
     if (!dateStr) return '';
@@ -9,9 +25,8 @@ function formatChartDate(dateStr) {
     if (parts.length !== 3) return dateStr;
     const monthIndex = parseInt(parts[1], 10) - 1;
     const day = parseInt(parts[2], 10);
-    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
     if (monthIndex >= 0 && monthIndex < 12) {
-        return `${months[monthIndex]} ${day}`;
+        return `${SHORT_MONTHS[monthIndex]} ${day}`;
     }
     return dateStr;
 }
@@ -23,11 +38,36 @@ function formatChartDateLong(dateStr) {
     const year = parts[0];
     const monthIndex = parseInt(parts[1], 10) - 1;
     const day = parseInt(parts[2], 10);
-    const months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
     if (monthIndex >= 0 && monthIndex < 12) {
-        return `${months[monthIndex]} ${day}, ${year}`;
+        return `${LONG_MONTHS[monthIndex]} ${day}, ${year}`;
     }
     return dateStr;
+}
+
+function formatMonthLabelShort(monthStr) {
+    if (!monthStr) return '';
+    const parts = monthStr.split('-');
+    if (parts.length === 2) {
+        const year = parts[0].substring(2);
+        const monthIndex = parseInt(parts[1], 10) - 1;
+        if (monthIndex >= 0 && monthIndex < 12) {
+            return `${SHORT_MONTHS[monthIndex]} '${year}`;
+        }
+    }
+    return monthStr;
+}
+
+function formatMonthLabelLong(monthStr) {
+    if (!monthStr) return '';
+    const parts = monthStr.split('-');
+    if (parts.length === 2) {
+        const year = parts[0];
+        const monthIndex = parseInt(parts[1], 10) - 1;
+        if (monthIndex >= 0 && monthIndex < 12) {
+            return `${LONG_MONTHS[monthIndex]} ${year}`;
+        }
+    }
+    return monthStr;
 }
 
 function formatPower(watts) {
@@ -55,7 +95,7 @@ function findProductionAndGridMeters(data) {
 function calculateLinearRegression(x, y) {
     const n = x.length;
     if (n === 0) return [];
-    
+
     let sumX = 0, sumY = 0, sumXY = 0, sumXX = 0;
     for (let i = 0; i < n; i++) {
         sumX += x[i];
@@ -63,15 +103,32 @@ function calculateLinearRegression(x, y) {
         sumXY += x[i] * y[i];
         sumXX += x[i] * x[i];
     }
-    
+
     const denominator = (n * sumXX - sumX * sumX);
     if (denominator === 0) {
         return y;
     }
     const slope = (n * sumXY - sumX * sumY) / denominator;
     const intercept = (sumY - slope * sumX) / n;
-    
+
     return x.map(val => slope * val + intercept);
+}
+
+async function parseJsonResponse(res) {
+    let data = null;
+    try {
+        data = await res.json();
+    } catch (_err) {
+        data = null;
+    }
+    if (!res.ok) {
+        const message = (data && data.error) || `Request failed (HTTP ${res.status})`;
+        throw new Error(message);
+    }
+    if (data === null) {
+        throw new Error('Received empty or invalid JSON response from server.');
+    }
+    return data;
 }
 
 function renderHistoryChart(data) {
@@ -79,20 +136,20 @@ function renderHistoryChart(data) {
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
-    
+
     if (historyChartInstance) {
         historyChartInstance.destroy();
     }
-    
+
     // Limit chart data to the last 14 days
-    const chartData = data.slice(-14);
-    
+    const chartData = (data || []).slice(-14);
+
     const dates = chartData.map(d => formatChartDate(d.date));
     const productions = chartData.map(d => d.production_kwh);
     const exports = chartData.map(d => d.export_kwh);
     const imports = chartData.map(d => d.import_kwh);
     const consumptions = chartData.map(d => d.consumption_kwh);
-    
+
     historyChartInstance = new Chart(ctx, {
         type: 'bar',
         data: {
@@ -176,23 +233,20 @@ function renderHistoryChart(data) {
     });
 }
 
-function renderEffectivenessChart(data) {
-    const canvas = document.getElementById('effectivenessChart');
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-    
-    if (effectivenessChartInstance) {
-        effectivenessChartInstance.destroy();
-    }
-    
-    // Limit chart data to the last 14 days
-    const chartData = data.slice(-14);
-    
-    const dates = chartData.map(d => formatChartDate(d.date));
+function buildEffectivenessChartConfig(data, {
+    sliceCount,
+    barFillAlpha,
+    pointRadius,
+    pointHoverRadius,
+    yAxisTitle,
+    formatLabel,
+    formatTooltipTitle,
+    formatEnergyValue,
+}) {
+    const chartData = Array.isArray(data) ? data.slice(-sliceCount) : [];
+    const labels = chartData.map(formatLabel);
     const productions = chartData.map(d => d.production_kwh);
     const imports = chartData.map(d => d.import_kwh);
-    
     const effectiveness = chartData.map(d => {
         const cons = d.consumption_kwh;
         if (cons <= 0) return 0;
@@ -201,17 +255,19 @@ function renderEffectivenessChart(data) {
 
     const indices = effectiveness.map((_, idx) => idx);
     const trendValues = calculateLinearRegression(indices, effectiveness);
-    
-    effectivenessChartInstance = new Chart(ctx, {
+    const maxEffectiveness = effectiveness.length > 0 ? Math.max(...effectiveness) : 0;
+    const y1Max = Math.max(100, Math.ceil(maxEffectiveness / 50) * 50);
+
+    return {
         type: 'bar',
         data: {
-            labels: dates,
+            labels,
             datasets: [
                 {
                     label: 'Solar Production (kWh)',
                     type: 'bar',
                     data: productions,
-                    backgroundColor: 'rgba(16, 185, 129, 0.15)',
+                    backgroundColor: `rgba(16, 185, 129, ${barFillAlpha})`,
                     borderColor: '#10b981',
                     borderWidth: 1.5,
                     yAxisID: 'y'
@@ -220,7 +276,7 @@ function renderEffectivenessChart(data) {
                     label: 'Grid Import (kWh)',
                     type: 'bar',
                     data: imports,
-                    backgroundColor: 'rgba(239, 68, 68, 0.15)',
+                    backgroundColor: `rgba(239, 68, 68, ${barFillAlpha})`,
                     borderColor: '#ef4444',
                     borderWidth: 1.5,
                     yAxisID: 'y'
@@ -232,8 +288,8 @@ function renderEffectivenessChart(data) {
                     borderColor: '#8b5cf6',
                     backgroundColor: 'rgba(139, 92, 246, 0.05)',
                     borderWidth: 3,
-                    pointRadius: 4,
-                    pointHoverRadius: 6,
+                    pointRadius,
+                    pointHoverRadius,
                     tension: 0.3,
                     yAxisID: 'y1'
                 },
@@ -268,7 +324,7 @@ function renderEffectivenessChart(data) {
                     beginAtZero: true,
                     title: {
                         display: true,
-                        text: 'Daily Energy (kWh)',
+                        text: yAxisTitle,
                         font: { weight: 'bold' }
                     },
                     grid: {
@@ -280,7 +336,7 @@ function renderEffectivenessChart(data) {
                     display: true,
                     position: 'right',
                     beginAtZero: true,
-                    max: Math.max(100, Math.ceil(Math.max(...effectiveness) / 50) * 50),
+                    max: y1Max,
                     title: {
                         display: true,
                         text: 'Solar Effectiveness (%)',
@@ -309,7 +365,7 @@ function renderEffectivenessChart(data) {
                         title: function(context) {
                             const dataIndex = context[0].dataIndex;
                             if (chartData[dataIndex]) {
-                                return formatChartDateLong(chartData[dataIndex].date);
+                                return formatTooltipTitle(chartData[dataIndex]);
                             }
                             return context[0].label;
                         },
@@ -320,7 +376,7 @@ function renderEffectivenessChart(data) {
                             }
                             if (context.parsed.y !== null) {
                                 if (context.datasetIndex < 2) {
-                                    label += context.parsed.y.toFixed(2) + ' kWh';
+                                    label += formatEnergyValue(context.parsed.y);
                                 } else {
                                     label += context.parsed.y.toFixed(1) + '%';
                                 }
@@ -331,7 +387,30 @@ function renderEffectivenessChart(data) {
                 }
             }
         }
+    };
+}
+
+function renderEffectivenessChart(data) {
+    const canvas = document.getElementById('effectivenessChart');
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    if (effectivenessChartInstance) {
+        effectivenessChartInstance.destroy();
+    }
+
+    const config = buildEffectivenessChartConfig(data, {
+        sliceCount: 14,
+        barFillAlpha: 0.15,
+        pointRadius: 4,
+        pointHoverRadius: 6,
+        yAxisTitle: 'Daily Energy (kWh)',
+        formatLabel: d => formatChartDate(d.date),
+        formatTooltipTitle: d => formatChartDateLong(d.date),
+        formatEnergyValue: y => y.toFixed(2) + ' kWh',
     });
+    effectivenessChartInstance = new Chart(ctx, config);
 }
 
 function renderMonthlyChart(data) {
@@ -339,186 +418,33 @@ function renderMonthlyChart(data) {
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
-    
+
     if (monthlyChartInstance) {
         monthlyChartInstance.destroy();
     }
-    
-    // Limit chart data to the last 6 months
-    const chartData = data.slice(-6);
-    
-    // Format month labels, e.g. "2026-06" to "Jun '26"
-    const dates = chartData.map(d => {
-        const parts = d.month.split('-');
-        if (parts.length === 2) {
-            const year = parts[0].substring(2);
-            const monthIndex = parseInt(parts[1], 10) - 1;
-            const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-            if (monthIndex >= 0 && monthIndex < 12) {
-                return `${months[monthIndex]} '${year}`;
-            }
-        }
-        return d.month;
-    });
-    
-    const productions = chartData.map(d => d.production_kwh);
-    const imports = chartData.map(d => d.import_kwh);
-    
-    const effectiveness = chartData.map(d => {
-        const cons = d.consumption_kwh;
-        if (cons <= 0) return 0;
-        return (d.production_kwh / cons) * 100;
-    });
 
-    const indices = effectiveness.map((_, idx) => idx);
-    const trendValues = calculateLinearRegression(indices, effectiveness);
-    
-    monthlyChartInstance = new Chart(ctx, {
-        type: 'bar',
-        data: {
-            labels: dates,
-            datasets: [
-                {
-                    label: 'Solar Production (kWh)',
-                    type: 'bar',
-                    data: productions,
-                    backgroundColor: 'rgba(16, 185, 129, 0.25)',
-                    borderColor: '#10b981',
-                    borderWidth: 1.5,
-                    yAxisID: 'y'
-                },
-                {
-                    label: 'Grid Import (kWh)',
-                    type: 'bar',
-                    data: imports,
-                    backgroundColor: 'rgba(239, 68, 68, 0.25)',
-                    borderColor: '#ef4444',
-                    borderWidth: 1.5,
-                    yAxisID: 'y'
-                },
-                {
-                    label: 'Solar Effectiveness (%)',
-                    type: 'line',
-                    data: effectiveness,
-                    borderColor: '#8b5cf6',
-                    backgroundColor: 'rgba(139, 92, 246, 0.05)',
-                    borderWidth: 3,
-                    pointRadius: 5,
-                    pointHoverRadius: 7,
-                    tension: 0.3,
-                    yAxisID: 'y1'
-                },
-                {
-                    label: 'Effectiveness Trend Line',
-                    type: 'line',
-                    data: trendValues,
-                    borderColor: 'rgba(139, 92, 246, 0.6)',
-                    backgroundColor: 'transparent',
-                    borderWidth: 2,
-                    borderDash: [6, 6],
-                    pointRadius: 0,
-                    fill: false,
-                    tension: 0,
-                    yAxisID: 'y1'
-                }
-            ]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            animation: false,
-            interaction: {
-                mode: 'index',
-                intersect: false,
-            },
-            scales: {
-                y: {
-                    type: 'linear',
-                    display: true,
-                    position: 'left',
-                    beginAtZero: true,
-                    title: {
-                        display: true,
-                        text: 'Monthly Energy (kWh)',
-                        font: { weight: 'bold' }
-                    },
-                    grid: {
-                        color: 'rgba(0, 0, 0, 0.05)'
-                    }
-                },
-                y1: {
-                    type: 'linear',
-                    display: true,
-                    position: 'right',
-                    beginAtZero: true,
-                    max: Math.max(100, Math.ceil(Math.max(...effectiveness) / 50) * 50),
-                    title: {
-                        display: true,
-                        text: 'Solar Effectiveness (%)',
-                        font: { weight: 'bold' }
-                    },
-                    grid: {
-                        drawOnChartArea: false
-                    }
-                },
-                x: {
-                    grid: {
-                        display: false
-                    }
-                }
-            },
-            plugins: {
-                legend: {
-                    position: 'top',
-                    labels: {
-                        boxWidth: 12,
-                        usePointStyle: true
-                    }
-                },
-                tooltip: {
-                    callbacks: {
-                        title: function(context) {
-                            const dataIndex = context[0].dataIndex;
-                            if (chartData[dataIndex]) {
-                                const parts = chartData[dataIndex].month.split('-');
-                                if (parts.length === 2) {
-                                    const year = parts[0];
-                                    const monthIndex = parseInt(parts[1], 10) - 1;
-                                    const months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
-                                    if (monthIndex >= 0 && monthIndex < 12) {
-                                        return `${months[monthIndex]} ${year}`;
-                                    }
-                                }
-                                return chartData[dataIndex].month;
-                            }
-                            return context[0].label;
-                        },
-                        label: function(context) {
-                            let label = context.dataset.label || '';
-                            if (label) {
-                                label += ': ';
-                            }
-                            if (context.parsed.y !== null) {
-                                if (context.datasetIndex < 2) {
-                                    label += context.parsed.y.toLocaleString(undefined, {minimumFractionDigits: 1, maximumFractionDigits: 1}) + ' kWh';
-                                } else {
-                                    label += context.parsed.y.toFixed(1) + '%';
-                                }
-                            }
-                            return label;
-                        }
-                    }
-                }
-            }
-        }
+    const config = buildEffectivenessChartConfig(data, {
+        sliceCount: 6,
+        barFillAlpha: 0.25,
+        pointRadius: 5,
+        pointHoverRadius: 7,
+        yAxisTitle: 'Monthly Energy (kWh)',
+        formatLabel: d => formatMonthLabelShort(d.month),
+        formatTooltipTitle: d => formatMonthLabelLong(d.month),
+        formatEnergyValue: y => y.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + ' kWh',
     });
+    monthlyChartInstance = new Chart(ctx, config);
 }
 
 document.addEventListener('alpine:init', () => {
     Alpine.data('dashboard', () => ({
         activeTab: 'live-tab',
         refreshRate: 3000,
-        
+
+        // Inline API error banner state
+        errorMessage: null,
+        errorSource: null,
+
         // Live power state
         meters: [],
         prodPower: 0,
@@ -535,7 +461,7 @@ document.addEventListener('alpine:init', () => {
         todayCoverage: 0,
         todayStale: false,
         hasTodayStats: false,
-        
+
         // Summary state
         lifetimeSolar: '',
         lifetimeImported: '',
@@ -545,17 +471,17 @@ document.addEventListener('alpine:init', () => {
         loadingSummary: false,
         showEffectivenessChart: false,
         showMonthlyChart: false,
-        
+
         // History state
         historyLogs: [],
         loadingHistory: false,
         historyPage: 1,
         historyPageSize: 20,
-        
+
         // Phases state
         phases: [],
         loadingPhases: false,
-        
+
         // Health state
         healthSummary: {
             operating: 0,
@@ -565,15 +491,15 @@ document.addEventListener('alpine:init', () => {
         },
         inverters: [],
         loadingHealth: false,
-        
+
         // Connectivity state
         connectivity: null,
         loadingConnectivity: false,
-        
+
         // Events state
         events: [],
         loadingEvents: false,
-        
+
         // Timer & polling state for auto-refresh
         refreshTimer: null,
         metersInFlight: false,
@@ -581,26 +507,34 @@ document.addEventListener('alpine:init', () => {
         lastTodayFetchAt: 0,
         pollGeneration: 0,
         _visibilityHandler: null,
-        
+        _hashChangeHandler: null,
+
         init() {
             // Pause live polling while tab is backgrounded and resume when visible again
             this._visibilityHandler = () => this.handleVisibilityChange();
             document.addEventListener('visibilitychange', this._visibilityHandler);
 
+            // Sync active tab with browser Back/Forward navigation
+            this._hashChangeHandler = () => this.handleHashChange();
+            window.addEventListener('hashchange', this._hashChangeHandler);
+
             // Load initial tab from hash
             const hash = window.location.hash.replace('#', '');
-            if (hash && ['live-tab', 'summary-tab', 'history-tab', 'phase-tab', 'health-tab', 'connectivity-tab', 'events-tab', 'specs-tab'].includes(hash)) {
+            if (hash && VALID_TABS.includes(hash)) {
                 this.activeTab = hash;
             } else {
                 this.activeTab = 'live-tab';
             }
-            
+
             // Watch tab changes to load data and handle browser history
             this.$watch('activeTab', (newVal) => {
-                window.location.hash = newVal;
+                if (window.location.hash.replace('#', '') !== newVal) {
+                    window.location.hash = newVal;
+                }
+                this.clearError();
                 this.handleTabSwitch(newVal);
             });
-            
+
             // Trigger load for the initial active tab
             this.handleTabSwitch(this.activeTab);
         },
@@ -611,6 +545,30 @@ document.addEventListener('alpine:init', () => {
                 document.removeEventListener('visibilitychange', this._visibilityHandler);
                 this._visibilityHandler = null;
             }
+            if (this._hashChangeHandler) {
+                window.removeEventListener('hashchange', this._hashChangeHandler);
+                this._hashChangeHandler = null;
+            }
+        },
+
+        setError(message, source = null) {
+            this.errorMessage = message || 'An unexpected error occurred.';
+            this.errorSource = source;
+        },
+
+        clearError(source = null) {
+            if (!source || this.errorSource === source) {
+                this.errorMessage = null;
+                this.errorSource = null;
+            }
+        },
+
+        handleHashChange() {
+            const hash = window.location.hash.replace('#', '');
+            const targetTab = VALID_TABS.includes(hash) ? hash : 'live-tab';
+            if (this.activeTab !== targetTab) {
+                this.activeTab = targetTab;
+            }
         },
 
         handleVisibilityChange() {
@@ -620,11 +578,11 @@ document.addEventListener('alpine:init', () => {
                 this.startLivePolling();
             }
         },
-        
+
         openTab(tabName) {
             this.activeTab = tabName;
         },
-        
+
         handleTabSwitch(tabName) {
             // Manage refresh timers
             if (tabName === 'live-tab') {
@@ -636,11 +594,11 @@ document.addEventListener('alpine:init', () => {
             } else {
                 this.stopRefreshTimer();
             }
-            
+
             // Trigger lazy loading
             this.triggerTabLoad(tabName);
         },
-        
+
         triggerTabLoad(tabName) {
             if (tabName === 'summary-tab') this.fetchSummary();
             if (tabName === 'history-tab') this.fetchHistory();
@@ -677,14 +635,14 @@ document.addEventListener('alpine:init', () => {
                 this.fetchMeters({ pollGeneration: gen });
             }, this.refreshRate);
         },
-        
+
         updateRefreshInterval() {
             this.stopRefreshTimer();
             if (this.refreshRate > 0 && this.activeTab === 'live-tab' && !document.hidden) {
                 this.scheduleNextPoll(this.pollGeneration);
             }
         },
-        
+
         stopRefreshTimer() {
             this.pollGeneration += 1;
             if (this.refreshTimer !== null) {
@@ -703,20 +661,20 @@ document.addEventListener('alpine:init', () => {
                 this.fetchMeters({ forceToday: true });
             }
         },
-        
+
         formatPower(watts) {
             return formatPower(watts);
         },
-        
+
         formatDate(timestamp) {
             if (!timestamp) return 'Never';
             return new Date(timestamp * 1000).toLocaleString();
         },
-        
+
         formatDateLong(dateStr) {
             return formatChartDateLong(dateStr);
         },
-        
+
         formatInverterStatus(statusArray) {
             if (!statusArray || statusArray.length === 0) return 'Unknown';
             return statusArray.map(status => {
@@ -725,7 +683,7 @@ document.addEventListener('alpine:init', () => {
                 return status.replace('envoy.cond_flags.pcu_chan.', '').replace('envoy.', '');
             }).join(', ');
         },
-        
+
         isOkState(val) {
             if (!val) return false;
             return ['connected', 'ok', 'configured', 'enabled'].includes(val.toLowerCase());
@@ -749,22 +707,22 @@ document.addEventListener('alpine:init', () => {
             this.todayInFlight = true;
             try {
                 const todayRes = await fetch('/api/history/today');
-                if (todayRes.ok) {
-                    const todayData = await todayRes.json();
-                    this.todayDate = todayData.date || '';
-                    this.todayProduction = todayData.production_kwh || 0;
-                    this.todayImport = todayData.import_kwh || 0;
-                    this.todayExport = todayData.export_kwh || 0;
-                    this.todayNetGrid = todayData.net_grid_kwh || 0;
-                    this.todayIsNetExport = todayData.is_net_export ?? (this.todayNetGrid >= 0);
-                    this.todayConsumption = todayData.consumption_kwh || 0;
-                    this.todayCoverage = todayData.solar_coverage_pct || 0;
-                    this.todayStale = Boolean(todayData.is_stale);
-                    this.hasTodayStats = Boolean(todayData.has_data);
-                    this.lastTodayFetchAt = Date.now();
-                }
+                const todayData = await parseJsonResponse(todayRes);
+                this.todayDate = todayData.date || '';
+                this.todayProduction = todayData.production_kwh || 0;
+                this.todayImport = todayData.import_kwh || 0;
+                this.todayExport = todayData.export_kwh || 0;
+                this.todayNetGrid = todayData.net_grid_kwh || 0;
+                this.todayIsNetExport = todayData.is_net_export ?? (this.todayNetGrid >= 0);
+                this.todayConsumption = todayData.consumption_kwh || 0;
+                this.todayCoverage = todayData.solar_coverage_pct || 0;
+                this.todayStale = Boolean(todayData.is_stale);
+                this.hasTodayStats = Boolean(todayData.has_data);
+                this.lastTodayFetchAt = Date.now();
+                this.clearError('today');
             } catch (err) {
                 console.error('Fetch today summary error:', err);
+                this.setError(`Unable to load today's solar summary: ${err.message}`, 'today');
             } finally {
                 this.todayInFlight = false;
             }
@@ -787,9 +745,8 @@ document.addEventListener('alpine:init', () => {
 
                 const metersPromise = (async () => {
                     const res = await fetch('/api/meters');
-                    const data = await res.json();
-                    if (!res.ok) throw new Error(data.error || 'API Error');
-                    
+                    const data = await parseJsonResponse(res);
+
                     const { prodMeter, gridMeter } = findProductionAndGridMeters(data);
                     if (prodMeter && gridMeter) {
                         this.meters = data;
@@ -797,6 +754,7 @@ document.addEventListener('alpine:init', () => {
                         this.gridPower = gridMeter.activePower || 0;
                         this.consPower = this.prodPower + this.gridPower;
                     }
+                    this.clearError('meters');
                 })();
 
                 if (shouldFetchToday) {
@@ -806,6 +764,7 @@ document.addEventListener('alpine:init', () => {
                 }
             } catch (err) {
                 console.error('Fetch meters error:', err);
+                this.setError(`Unable to load live meter readings: ${err.message}`, 'meters');
             } finally {
                 this.loadingMeters = false;
                 this.metersInFlight = false;
@@ -814,7 +773,7 @@ document.addEventListener('alpine:init', () => {
                 }
             }
         },
-        
+
         async fetchSummary() {
             this.loadingSummary = true;
             this.showEffectivenessChart = false;
@@ -825,9 +784,8 @@ document.addEventListener('alpine:init', () => {
                     fetch('/api/history/daily?days=14'),
                     fetch('/api/history/monthly')
                 ]);
-                
-                const data = await resMeters.json();
-                if (!resMeters.ok) throw new Error(data.error || 'API Error fetching meters');
+
+                const data = await parseJsonResponse(resMeters);
 
                 const { prodMeter, gridMeter } = findProductionAndGridMeters(data);
                 if (prodMeter && gridMeter) {
@@ -835,19 +793,19 @@ document.addEventListener('alpine:init', () => {
                     const lifetimeImport = gridMeter.actEnergyDlvd || 0;
                     const lifetimeExport = gridMeter.actEnergyRcvd || 0;
                     const lifetimeConsumption = lifetimeProduction - lifetimeExport + lifetimeImport;
-                    
+
                     const formatEnergy = (wh) => {
                         if (wh >= 1000000) return (wh / 1000000).toFixed(2) + ' MWh';
                         if (wh >= 1000) return (wh / 1000).toFixed(2) + ' kWh';
                         return wh.toFixed(0) + ' Wh';
                     };
-                    
+
                     this.lifetimeSolar = formatEnergy(lifetimeProduction);
                     this.lifetimeImported = formatEnergy(lifetimeImport);
                     this.lifetimeExported = formatEnergy(lifetimeExport);
                     this.lifetimeConsumed = formatEnergy(lifetimeConsumption);
-                    this.netSolarOffset = lifetimeConsumption > 0 
-                        ? ((lifetimeProduction / lifetimeConsumption) * 100).toFixed(1) + '%' 
+                    this.netSolarOffset = lifetimeConsumption > 0
+                        ? ((lifetimeProduction / lifetimeConsumption) * 100).toFixed(1) + '%'
                         : '100.0%';
                 }
 
@@ -870,55 +828,57 @@ document.addEventListener('alpine:init', () => {
                         });
                     }
                 }
+                this.clearError('summary');
             } catch (err) {
                 console.error('Fetch summary error:', err);
+                this.setError(`Unable to load system summary: ${err.message}`, 'summary');
             } finally {
                 this.loadingSummary = false;
             }
         },
-        
+
         async fetchHistory() {
             this.loadingHistory = true;
             try {
                 const res = await fetch('/api/history/daily');
-                const data = await res.json();
-                if (!res.ok) throw new Error(data.error || 'API Error');
-                
+                const data = await parseJsonResponse(res);
+
                 this.historyPage = 1;
                 this.historyLogs = data;
-                
+
                 if (data.length > 0) {
                     this.$nextTick(() => {
                         renderHistoryChart(data);
                     });
                 }
+                this.clearError('history');
             } catch (err) {
                 console.error('Fetch history error:', err);
+                this.setError(`Unable to load energy history: ${err.message}`, 'history');
             } finally {
                 this.loadingHistory = false;
             }
         },
-        
+
         async syncDatabase() {
             this.loadingHistory = true;
             try {
                 const res = await fetch('/api/history/refresh', { method: 'POST' });
-                const data = await res.json();
-                if (!res.ok) throw new Error(data.error || 'Sync Error');
+                await parseJsonResponse(res);
+                this.clearError('sync');
                 await this.fetchHistory();
             } catch (err) {
-                console.error("Sync error:", err);
-                alert("Failed to sync database: " + err.message);
+                console.error('Sync error:', err);
+                this.setError(`Failed to sync database: ${err.message}`, 'sync');
                 this.loadingHistory = false;
             }
         },
-        
+
         async fetchPhases() {
             this.loadingPhases = true;
             try {
                 const res = await fetch('/api/meters');
-                const data = await res.json();
-                if (!res.ok) throw new Error(data.error || 'API Error');
+                const data = await parseJsonResponse(res);
 
                 const activePhaseMeters = data.filter(m => {
                     if (!Array.isArray(m.channels) || m.channels.length === 0) return false;
@@ -931,28 +891,29 @@ document.addEventListener('alpine:init', () => {
                 this.phases = activePhaseMeters.length > 0
                     ? activePhaseMeters
                     : data.filter(m => Array.isArray(m.channels) && m.channels.length > 0);
+                this.clearError('phases');
             } catch (err) {
                 console.error('Fetch phases error:', err);
+                this.setError(`Unable to load phase details: ${err.message}`, 'phases');
             } finally {
                 this.loadingPhases = false;
             }
         },
-        
+
         async fetchHealth() {
             this.loadingHealth = true;
             try {
                 const res = await fetch('/api/inventory');
-                const data = await res.json();
-                if (!res.ok) throw new Error(data.error || 'API Error');
+                const data = await parseJsonResponse(res);
 
                 const pcuGroup = data.find(g => g.type === 'PCU');
                 if (!pcuGroup) throw new Error('No inverters found in inventory');
 
                 this.inverters = pcuGroup.devices || [];
-                
+
                 // Fix the Envoy firmware bug where operating is false even when inverters are normal
                 this.inverters.forEach(inv => {
-                    inv.operating = inv.producing || (inv.device_status && inv.device_status.includes("envoy.global.ok"));
+                    inv.operating = inv.producing || (inv.device_status && inv.device_status.includes('envoy.global.ok'));
                 });
 
                 this.healthSummary = {
@@ -961,24 +922,26 @@ document.addEventListener('alpine:init', () => {
                     producing: this.inverters.filter(i => i.producing).length,
                     communicating: this.inverters.filter(i => i.communicating).length
                 };
+                this.clearError('health');
             } catch (err) {
                 console.error('Fetch health error:', err);
+                this.setError(`Unable to load inverter health: ${err.message}`, 'health');
             } finally {
                 this.loadingHealth = false;
             }
         },
-        
+
         get paginatedHistoryLogs() {
             const reversed = [...this.historyLogs].reverse();
             const start = (this.historyPage - 1) * this.historyPageSize;
             const end = start + this.historyPageSize;
             return reversed.slice(start, end);
         },
-        
+
         get totalHistoryPages() {
             return Math.ceil(this.historyLogs.length / this.historyPageSize) || 1;
         },
-        
+
         get visibleHistoryPages() {
             const pages = [];
             const total = this.totalHistoryPages;
@@ -993,31 +956,30 @@ document.addEventListener('alpine:init', () => {
             }
             return pages;
         },
-        
+
         prevHistoryPage() {
             if (this.historyPage > 1) {
                 this.historyPage--;
             }
         },
-        
+
         nextHistoryPage() {
             if (this.historyPage < this.totalHistoryPages) {
                 this.historyPage++;
             }
         },
-        
+
         setHistoryPage(page) {
             if (page >= 1 && page <= this.totalHistoryPages) {
                 this.historyPage = page;
             }
         },
-        
+
         async fetchConnectivity() {
             this.loadingConnectivity = true;
             try {
                 const res = await fetch('/api/connectivity');
-                const data = await res.json();
-                if (!res.ok) throw new Error(data.error || 'API Error');
+                const data = await parseJsonResponse(res);
 
                 const conn = data.connection;
                 this.connectivity = {
@@ -1028,23 +990,26 @@ document.addEventListener('alpine:init', () => {
                     sc_debug: conn.sc_debug || 'unknown',
                     meters_last_update: data.meters?.last_update || null
                 };
+                this.clearError('connectivity');
             } catch (err) {
                 console.error('Fetch connectivity error:', err);
+                this.setError(`Unable to load gateway connectivity: ${err.message}`, 'connectivity');
             } finally {
                 this.loadingConnectivity = false;
             }
         },
-        
+
         async fetchEvents() {
             this.loadingEvents = true;
             try {
                 const res = await fetch('/api/events');
-                const data = await res.json();
-                if (!res.ok) throw new Error(data.error || 'API Error');
+                const data = await parseJsonResponse(res);
 
                 this.events = data.alerts || [];
+                this.clearError('events');
             } catch (err) {
                 console.error('Fetch events error:', err);
+                this.setError(`Unable to load system events: ${err.message}`, 'events');
             } finally {
                 this.loadingEvents = false;
             }

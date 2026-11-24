@@ -11,7 +11,7 @@ from flask import Flask, render_template, send_file, make_response
 from flask_apscheduler import APScheduler
 from werkzeug.middleware.proxy_fix import ProxyFix
 from server.db import db, MeterReading
-from server.config import load_config, load_specs
+from server.config import load_config, load_specs, get_gateway_token_status
 from server.api import api_bp
 import server.trmnl_service as trmnl_service
 from server.trmnl_service import update_trmnl_display, load_trmnl_telemetry
@@ -70,7 +70,8 @@ def _register_routes(flask_app):
     def index():
         config = load_config()
         specs = load_specs()
-        return render_template('index.html', config=config, specs=specs)
+        token_status = get_gateway_token_status(config)
+        return render_template('index.html', config=config, specs=specs, token_status=token_status)
 
     @flask_app.route('/trmnl', methods=['GET'])
     def trmnl_preview_page():
