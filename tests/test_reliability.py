@@ -149,13 +149,21 @@ def test_requirements_txt_is_pinned_includes_pyjwt_and_has_single_pg_driver():
 
     names = [re.split(r'[=<>!~]', line)[0].lower() for line in lines]
     assert 'pyjwt' in names
-    assert 'psycopg2-binary' in names
-    assert 'psycopg[binary]' not in names
-    assert 'psycopg' not in names
+    assert 'psycopg[binary]' in names
+    assert 'psycopg2-binary' not in names
+    assert 'psycopg2' not in names
 
     # Every requirement line must be version-pinned with ==
     for line in lines:
         assert '==' in line, f'Unpinned dependency in requirements.txt: {line}'
+
+    # Ensure SQLAlchemy's default postgresql:// driver can be instantiated without ImportError
+    from sqlalchemy import create_engine
+    engine = create_engine('postgresql://postgres:test@localhost:5432/enphase')
+    try:
+        assert engine.driver == 'psycopg'
+    finally:
+        engine.dispose()
 
 
 # ---------------------------------------------------------------------------
