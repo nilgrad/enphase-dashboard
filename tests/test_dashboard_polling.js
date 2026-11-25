@@ -543,3 +543,46 @@ test('history combo chart slices by selected timeframe, summarizes totals, and b
     assert.ok(lines[1].startsWith('2026-06-20,39.00,8.00,4.00,35.00,111.4,Estimated'));
     assert.ok(lines[2].startsWith('2026-06-19,38.00,8.00,4.00,34.00,111.8,Normal'));
 });
+
+test('health filtering sorts issues first, formats relative report times, and summarizes meter phases', () => {
+    const harness = createHarness({ fetchImpl: () => okJson([]) });
+    const { component } = harness;
+
+    const nowSec = Math.floor(harness.context.Date.now() / 1000);
+    assert.equal(component.formatRelativeTime(0), 'Never');
+    assert.equal(component.formatRelativeTime(nowSec - 20), 'Just now');
+    assert.equal(component.formatRelativeTime(nowSec - 185), '3m ago');
+    assert.equal(component.formatRelativeTime(nowSec - 7200), '2h ago');
+    assert.equal(component.formatRelativeTime(nowSec - 172800), '2d ago');
+
+    component.inverters = [
+        { serial_num: 'OK-1', operating: true, producing: true, communicating: true },
+        { serial_num: 'ERR-1', operating: true, producing: false, communicating: true },
+        { serial_num: 'OK-2', operating: true, producing: true, communicating: true },
+        { serial_num: 'ERR-2', operating: false, producing: false, communicating: false },
+    ];
+    assert.equal(component.healthIssueCount, 2);
+
+    component.healthFilter = 'all';
+    assert.deepEqual(
+        Array.from(component.filteredInverters, i => i.serial_num),
+        ['ERR-1', 'ERR-2', 'OK-1', 'OK-2']
+    );
+
+    component.healthFilter = 'issues';
+    assert.deepEqual(
+        Array.from(component.filteredInverters, i => i.serial_num),
+        ['ERR-1', 'ERR-2']
+    );
+
+    const summary = component.summarizeMeterPhases({
+        channels: [
+            { activePower: 1200, voltage: 121.0, freq: 60.0, pwrFactor: 0.99 },
+            { activePower: 1300, voltage: 123.0, freq: 60.02, pwrFactor: 0.97 },
+        ],
+    });
+    assert.equal(summary.totalPower, 2500);
+    assert.equal(summary.avgVoltage, 122.0);
+    assert.ok(Math.abs(summary.avgFreq - 60.01) < 1e-9);
+    assert.ok(Math.abs(summary.avgPwrFactor - 0.98) < 1e-9);
+});
