@@ -504,3 +504,42 @@ test('background polling keeps manualRefreshingMeters false while manual refresh
     await flushMicrotasks();
     assert.equal(component.manualRefreshingMeters, false);
 });
+
+test('history combo chart slices by selected timeframe, summarizes totals, and builds CSV output', () => {
+    const harness = createHarness({ fetchImpl: () => okJson([]) });
+    const { buildHistoryChartConfig, buildHistoryCsv } = harness.context;
+    const { component } = harness;
+
+    const sampleHistory = Array.from({ length: 20 }, (_, idx) => ({
+        date: `2026-06-${String(idx + 1).padStart(2, '0')}`,
+        production_kwh: 20 + idx,
+        export_kwh: 8,
+        import_kwh: 4,
+        consumption_kwh: 16 + idx,
+        is_interpolated: idx === 19,
+    }));
+
+    const cfg7 = buildHistoryChartConfig(sampleHistory, 7);
+    assert.equal(cfg7.data.labels.length, 7);
+    assert.equal(cfg7.data.datasets[0].type, 'line');
+    assert.equal(cfg7.data.datasets[0].label, 'House Consumption (kWh)');
+    assert.equal(cfg7.data.datasets[1].type, 'bar');
+
+    const cfg30 = buildHistoryChartConfig(sampleHistory, 30);
+    assert.equal(cfg30.data.labels.length, 20);
+
+    component.historyLogs = sampleHistory;
+    component.historyChartDays = 7;
+    assert.equal(component.historyPeriodSummary.days, 7);
+    assert.equal(component.historyPeriodSummary.exported, 56);
+    assert.equal(component.historyPeriodSummary.imported, 28);
+    assert.equal(component.formatCoveragePct({ production_kwh: 25, consumption_kwh: 20 }), '125.0%');
+    assert.equal(component.formatCoveragePct({ production_kwh: 0, consumption_kwh: 0 }), '0.0%');
+
+    const csv = buildHistoryCsv(sampleHistory.slice(18));
+    const lines = csv.trim().split('\n');
+    assert.equal(lines[0], 'Date,Solar Production (kWh),Grid Export (kWh),Grid Import (kWh),House Consumption (kWh),Solar Coverage (%),Status');
+    // Newest first (2026-06-20 is interpolated)
+    assert.ok(lines[1].startsWith('2026-06-20,39.00,8.00,4.00,35.00,111.4,Estimated'));
+    assert.ok(lines[2].startsWith('2026-06-19,38.00,8.00,4.00,34.00,111.8,Normal'));
+});
