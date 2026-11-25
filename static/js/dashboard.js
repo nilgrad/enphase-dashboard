@@ -1,7 +1,74 @@
 let historyChartInstance = null;
 let effectivenessChartInstance = null;
 let monthlyChartInstance = null;
+let lastHistoryChartData = null;
+let lastEffectivenessChartData = null;
+let lastMonthlyChartData = null;
+const THEME_STORAGE_KEY = 'enphase-theme';
+const THEME_CYCLE = ['auto', 'dark', 'light'];
 const TODAY_SUMMARY_REFRESH_MS = 60000;
+
+function getChartTheme() {
+    const fallback = {
+        isDark: false,
+        fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+        gridColor: 'rgba(15, 23, 42, 0.07)',
+        tickColor: '#64748b',
+        titleColor: '#334155',
+        tooltipBg: 'rgba(15, 23, 42, 0.94)',
+        tooltipFg: '#f8fafc',
+        tooltipBorder: 'rgba(148, 163, 184, 0.25)',
+        solar: '#d97706',
+        solarRgb: '217, 119, 6',
+        exportColor: '#059669',
+        exportRgb: '5, 150, 105',
+        importColor: '#e11d48',
+        importRgb: '225, 29, 72',
+        consumption: '#2563eb',
+        consumptionRgb: '37, 99, 235',
+        offset: '#7c3aed',
+        offsetRgb: '124, 58, 237',
+    };
+    if (typeof document === 'undefined' || !document.documentElement || typeof getComputedStyle !== 'function') {
+        return fallback;
+    }
+    const root = document.documentElement;
+    const isDark = root.dataset && root.dataset.theme === 'dark';
+    const styles = getComputedStyle(root);
+    const readVar = (name, def) => (styles.getPropertyValue(name) || '').trim() || def;
+    return {
+        isDark,
+        fontFamily: readVar('--font-sans', fallback.fontFamily),
+        gridColor: readVar('--chart-grid', fallback.gridColor),
+        tickColor: readVar('--chart-tick', fallback.tickColor),
+        titleColor: readVar('--chart-title', fallback.titleColor),
+        tooltipBg: readVar('--chart-tooltip-bg', fallback.tooltipBg),
+        tooltipFg: readVar('--chart-tooltip-fg', fallback.tooltipFg),
+        tooltipBorder: readVar('--chart-tooltip-border', fallback.tooltipBorder),
+        solar: readVar('--solar', isDark ? '#f59e0b' : fallback.solar),
+        solarRgb: isDark ? '245, 158, 11' : fallback.solarRgb,
+        exportColor: readVar('--export', isDark ? '#10b981' : fallback.exportColor),
+        exportRgb: isDark ? '16, 185, 129' : fallback.exportRgb,
+        importColor: readVar('--import', isDark ? '#f43f5e' : fallback.importColor),
+        importRgb: isDark ? '244, 63, 94' : fallback.importRgb,
+        consumption: readVar('--consumption', isDark ? '#3b82f6' : fallback.consumption),
+        consumptionRgb: isDark ? '59, 130, 246' : fallback.consumptionRgb,
+        offset: readVar('--offset', isDark ? '#8b5cf6' : fallback.offset),
+        offsetRgb: isDark ? '139, 92, 246' : fallback.offsetRgb,
+    };
+}
+
+function rerenderActiveChartsForTheme() {
+    if (historyChartInstance && lastHistoryChartData) {
+        renderHistoryChart(lastHistoryChartData);
+    }
+    if (effectivenessChartInstance && lastEffectivenessChartData) {
+        renderEffectivenessChart(lastEffectivenessChartData);
+    }
+    if (monthlyChartInstance && lastMonthlyChartData) {
+        renderMonthlyChart(lastMonthlyChartData);
+    }
+}
 const VALID_TABS = [
     'live-tab',
     'summary-tab',
@@ -132,6 +199,7 @@ async function parseJsonResponse(res) {
 }
 
 function renderHistoryChart(data) {
+    lastHistoryChartData = data;
     const canvas = document.getElementById('historyChart');
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
@@ -140,6 +208,8 @@ function renderHistoryChart(data) {
     if (historyChartInstance) {
         historyChartInstance.destroy();
     }
+
+    const theme = getChartTheme();
 
     // Limit chart data to the last 14 days
     const chartData = (data || []).slice(-14);
@@ -158,30 +228,38 @@ function renderHistoryChart(data) {
                 {
                     label: 'Solar Production (kWh)',
                     data: productions,
-                    backgroundColor: 'rgba(16, 185, 129, 0.7)',
-                    borderColor: '#10b981',
-                    borderWidth: 1
+                    backgroundColor: `rgba(${theme.solarRgb}, 0.82)`,
+                    borderColor: theme.solar,
+                    borderWidth: 1,
+                    borderRadius: 5,
+                    borderSkipped: 'bottom'
                 },
                 {
                     label: 'Grid Export (kWh)',
                     data: exports,
-                    backgroundColor: 'rgba(79, 70, 229, 0.7)',
-                    borderColor: '#4f46e5',
-                    borderWidth: 1
+                    backgroundColor: `rgba(${theme.exportRgb}, 0.78)`,
+                    borderColor: theme.exportColor,
+                    borderWidth: 1,
+                    borderRadius: 5,
+                    borderSkipped: 'bottom'
                 },
                 {
                     label: 'Grid Import (kWh)',
                     data: imports,
-                    backgroundColor: 'rgba(239, 68, 68, 0.7)',
-                    borderColor: '#ef4444',
-                    borderWidth: 1
+                    backgroundColor: `rgba(${theme.importRgb}, 0.78)`,
+                    borderColor: theme.importColor,
+                    borderWidth: 1,
+                    borderRadius: 5,
+                    borderSkipped: 'bottom'
                 },
                 {
                     label: 'House Consumption (kWh)',
                     data: consumptions,
-                    backgroundColor: 'rgba(71, 85, 105, 0.7)',
-                    borderColor: '#475569',
-                    borderWidth: 1
+                    backgroundColor: `rgba(${theme.consumptionRgb}, 0.75)`,
+                    borderColor: theme.consumption,
+                    borderWidth: 1,
+                    borderRadius: 5,
+                    borderSkipped: 'bottom'
                 }
             ]
         },
@@ -192,12 +270,25 @@ function renderHistoryChart(data) {
             scales: {
                 y: {
                     beginAtZero: true,
+                    ticks: {
+                        color: theme.tickColor,
+                        font: { family: theme.fontFamily }
+                    },
+                    grid: {
+                        color: theme.gridColor
+                    },
                     title: {
                         display: true,
-                        text: 'Energy (kWh)'
+                        text: 'Energy (kWh)',
+                        color: theme.titleColor,
+                        font: { family: theme.fontFamily, weight: '600' }
                     }
                 },
                 x: {
+                    ticks: {
+                        color: theme.tickColor,
+                        font: { family: theme.fontFamily }
+                    },
                     grid: {
                         display: false
                     }
@@ -207,10 +298,23 @@ function renderHistoryChart(data) {
                 legend: {
                     position: 'top',
                     labels: {
-                        boxWidth: 12
+                        boxWidth: 10,
+                        boxHeight: 10,
+                        usePointStyle: true,
+                        pointStyle: 'circle',
+                        color: theme.titleColor,
+                        padding: 16,
+                        font: { family: theme.fontFamily, weight: '600' }
                     }
                 },
                 tooltip: {
+                    backgroundColor: theme.tooltipBg,
+                    titleColor: theme.tooltipFg,
+                    bodyColor: theme.tooltipFg,
+                    borderColor: theme.tooltipBorder,
+                    borderWidth: 1,
+                    cornerRadius: 8,
+                    padding: 10,
                     callbacks: {
                         title: function(context) {
                             const dataIndex = context[0].dataIndex;
@@ -243,6 +347,7 @@ function buildEffectivenessChartConfig(data, {
     formatTooltipTitle,
     formatEnergyValue,
 }) {
+    const theme = getChartTheme();
     const chartData = Array.isArray(data) ? data.slice(-sliceCount) : [];
     const labels = chartData.map(formatLabel);
     const productions = chartData.map(d => d.production_kwh);
@@ -267,27 +372,32 @@ function buildEffectivenessChartConfig(data, {
                     label: 'Solar Production (kWh)',
                     type: 'bar',
                     data: productions,
-                    backgroundColor: `rgba(16, 185, 129, ${barFillAlpha})`,
-                    borderColor: '#10b981',
+                    backgroundColor: `rgba(${theme.solarRgb}, ${Math.max(barFillAlpha, 0.25)})`,
+                    borderColor: theme.solar,
                     borderWidth: 1.5,
+                    borderRadius: 5,
+                    borderSkipped: 'bottom',
                     yAxisID: 'y'
                 },
                 {
                     label: 'Grid Import (kWh)',
                     type: 'bar',
                     data: imports,
-                    backgroundColor: `rgba(239, 68, 68, ${barFillAlpha})`,
-                    borderColor: '#ef4444',
+                    backgroundColor: `rgba(${theme.importRgb}, ${Math.max(barFillAlpha, 0.25)})`,
+                    borderColor: theme.importColor,
                     borderWidth: 1.5,
+                    borderRadius: 5,
+                    borderSkipped: 'bottom',
                     yAxisID: 'y'
                 },
                 {
                     label: 'Solar Effectiveness (%)',
                     type: 'line',
                     data: effectiveness,
-                    borderColor: '#8b5cf6',
-                    backgroundColor: 'rgba(139, 92, 246, 0.05)',
-                    borderWidth: 3,
+                    borderColor: theme.offset,
+                    backgroundColor: `rgba(${theme.offsetRgb}, 0.08)`,
+                    borderWidth: 2.75,
+                    pointBackgroundColor: theme.offset,
                     pointRadius,
                     pointHoverRadius,
                     tension: 0.3,
@@ -297,7 +407,7 @@ function buildEffectivenessChartConfig(data, {
                     label: 'Effectiveness Trend Line',
                     type: 'line',
                     data: trendValues,
-                    borderColor: 'rgba(139, 92, 246, 0.6)',
+                    borderColor: `rgba(${theme.offsetRgb}, 0.65)`,
                     backgroundColor: 'transparent',
                     borderWidth: 2,
                     borderDash: [6, 6],
@@ -322,13 +432,18 @@ function buildEffectivenessChartConfig(data, {
                     display: true,
                     position: 'left',
                     beginAtZero: true,
+                    ticks: {
+                        color: theme.tickColor,
+                        font: { family: theme.fontFamily }
+                    },
                     title: {
                         display: true,
                         text: yAxisTitle,
-                        font: { weight: 'bold' }
+                        color: theme.titleColor,
+                        font: { family: theme.fontFamily, weight: '600' }
                     },
                     grid: {
-                        color: 'rgba(0, 0, 0, 0.05)'
+                        color: theme.gridColor
                     }
                 },
                 y1: {
@@ -337,16 +452,25 @@ function buildEffectivenessChartConfig(data, {
                     position: 'right',
                     beginAtZero: true,
                     max: y1Max,
+                    ticks: {
+                        color: theme.tickColor,
+                        font: { family: theme.fontFamily }
+                    },
                     title: {
                         display: true,
                         text: 'Solar Effectiveness (%)',
-                        font: { weight: 'bold' }
+                        color: theme.titleColor,
+                        font: { family: theme.fontFamily, weight: '600' }
                     },
                     grid: {
                         drawOnChartArea: false
                     }
                 },
                 x: {
+                    ticks: {
+                        color: theme.tickColor,
+                        font: { family: theme.fontFamily }
+                    },
                     grid: {
                         display: false
                     }
@@ -356,11 +480,22 @@ function buildEffectivenessChartConfig(data, {
                 legend: {
                     position: 'top',
                     labels: {
-                        boxWidth: 12,
-                        usePointStyle: true
+                        boxWidth: 10,
+                        boxHeight: 10,
+                        usePointStyle: true,
+                        color: theme.titleColor,
+                        padding: 16,
+                        font: { family: theme.fontFamily, weight: '600' }
                     }
                 },
                 tooltip: {
+                    backgroundColor: theme.tooltipBg,
+                    titleColor: theme.tooltipFg,
+                    bodyColor: theme.tooltipFg,
+                    borderColor: theme.tooltipBorder,
+                    borderWidth: 1,
+                    cornerRadius: 8,
+                    padding: 10,
                     callbacks: {
                         title: function(context) {
                             const dataIndex = context[0].dataIndex;
@@ -391,6 +526,7 @@ function buildEffectivenessChartConfig(data, {
 }
 
 function renderEffectivenessChart(data) {
+    lastEffectivenessChartData = data;
     const canvas = document.getElementById('effectivenessChart');
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
@@ -402,7 +538,7 @@ function renderEffectivenessChart(data) {
 
     const config = buildEffectivenessChartConfig(data, {
         sliceCount: 14,
-        barFillAlpha: 0.15,
+        barFillAlpha: 0.28,
         pointRadius: 4,
         pointHoverRadius: 6,
         yAxisTitle: 'Daily Energy (kWh)',
@@ -414,6 +550,7 @@ function renderEffectivenessChart(data) {
 }
 
 function renderMonthlyChart(data) {
+    lastMonthlyChartData = data;
     const canvas = document.getElementById('monthlyChart');
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
@@ -425,7 +562,7 @@ function renderMonthlyChart(data) {
 
     const config = buildEffectivenessChartConfig(data, {
         sliceCount: 6,
-        barFillAlpha: 0.25,
+        barFillAlpha: 0.35,
         pointRadius: 5,
         pointHoverRadius: 7,
         yAxisTitle: 'Monthly Energy (kWh)',
@@ -440,6 +577,7 @@ document.addEventListener('alpine:init', () => {
     Alpine.data('dashboard', () => ({
         activeTab: 'live-tab',
         refreshRate: 3000,
+        themePreference: 'auto',
 
         // Inline API error banner state
         errorMessage: null,
@@ -508,8 +646,77 @@ document.addEventListener('alpine:init', () => {
         pollGeneration: 0,
         _visibilityHandler: null,
         _hashChangeHandler: null,
+        _themeMediaQuery: null,
+        _themeMediaHandler: null,
+
+        get themeLabel() {
+            if (this.themePreference === 'dark') return 'Dark';
+            if (this.themePreference === 'light') return 'Light';
+            return 'Auto';
+        },
+
+        initTheme() {
+            let saved = 'auto';
+            try {
+                if (typeof localStorage !== 'undefined') {
+                    const stored = localStorage.getItem(THEME_STORAGE_KEY);
+                    if (THEME_CYCLE.includes(stored)) {
+                        saved = stored;
+                    }
+                }
+            } catch (_err) {
+                saved = 'auto';
+            }
+            this.themePreference = saved;
+            this.applyTheme({ rerenderCharts: false });
+
+            if (typeof window !== 'undefined' && typeof window.matchMedia === 'function') {
+                this._themeMediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+                this._themeMediaHandler = () => {
+                    if (this.themePreference === 'auto') {
+                        this.applyTheme({ rerenderCharts: true });
+                    }
+                };
+                if (typeof this._themeMediaQuery.addEventListener === 'function') {
+                    this._themeMediaQuery.addEventListener('change', this._themeMediaHandler);
+                }
+            }
+        },
+
+        applyTheme({ rerenderCharts = true } = {}) {
+            if (typeof document === 'undefined' || !document.documentElement) {
+                return;
+            }
+            const prefersDark =
+                typeof window !== 'undefined' &&
+                typeof window.matchMedia === 'function' &&
+                window.matchMedia('(prefers-color-scheme: dark)').matches;
+            const resolved = this.themePreference === 'auto'
+                ? (prefersDark ? 'dark' : 'light')
+                : this.themePreference;
+            document.documentElement.dataset.theme = resolved;
+            if (rerenderCharts) {
+                rerenderActiveChartsForTheme();
+            }
+        },
+
+        cycleTheme() {
+            const idx = THEME_CYCLE.indexOf(this.themePreference);
+            const next = THEME_CYCLE[(idx + 1) % THEME_CYCLE.length];
+            this.themePreference = next;
+            try {
+                if (typeof localStorage !== 'undefined') {
+                    localStorage.setItem(THEME_STORAGE_KEY, next);
+                }
+            } catch (_err) {
+                // Ignore storage errors in restricted browser modes
+            }
+            this.applyTheme({ rerenderCharts: true });
+        },
 
         init() {
+            this.initTheme();
+
             // Pause live polling while tab is backgrounded and resume when visible again
             this._visibilityHandler = () => this.handleVisibilityChange();
             document.addEventListener('visibilitychange', this._visibilityHandler);
@@ -548,6 +755,11 @@ document.addEventListener('alpine:init', () => {
             if (this._hashChangeHandler) {
                 window.removeEventListener('hashchange', this._hashChangeHandler);
                 this._hashChangeHandler = null;
+            }
+            if (this._themeMediaQuery && this._themeMediaHandler && typeof this._themeMediaQuery.removeEventListener === 'function') {
+                this._themeMediaQuery.removeEventListener('change', this._themeMediaHandler);
+                this._themeMediaQuery = null;
+                this._themeMediaHandler = null;
             }
         },
 
@@ -776,8 +988,6 @@ document.addEventListener('alpine:init', () => {
 
         async fetchSummary() {
             this.loadingSummary = true;
-            this.showEffectivenessChart = false;
-            this.showMonthlyChart = false;
             try {
                 const [resMeters, resHistory, resMonthly] = await Promise.all([
                     fetch('/api/meters'),

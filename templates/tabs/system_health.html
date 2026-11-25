@@ -1,6 +1,6 @@
 <div class="tab-header">
     <h2>Per-Inverter Health &amp; Status</h2>
-    <button class="refresh-btn" @click="fetchHealth()" :disabled="loadingHealth">
+    <button type="button" class="refresh-btn" @click="fetchHealth()" :disabled="loadingHealth">
         <span class="btn-content-stack">
             <span :class="{ 'invisible-text': loadingHealth }">Refresh Health</span>
             <span :class="{ 'invisible-text': !loadingHealth }" class="loading">Refreshing...</span>
@@ -20,7 +20,7 @@
 
 <div class="inverters-grid" x-show="inverters.length > 0">
     <template x-for="inv in inverters" :key="inv.serial_num">
-        <div class="inverter-card" :style="{ borderTopColor: (inv.operating && inv.producing && inv.communicating) ? 'var(--success)' : 'var(--danger)' }">
+        <div class="inverter-card" :class="(inv.operating && inv.producing && inv.communicating) ? 'inverter-ok' : 'inverter-err'">
             <h4 class="inverter-title" x-text="'SN: ' + inv.serial_num"></h4>
             <p class="inverter-meta">
                 <strong>Model:</strong> <span class="text-main fw-semibold" x-text="inv.part_num"></span>
@@ -32,9 +32,9 @@
                 <strong>Status:</strong> <span class="fw-semibold" x-text="formatInverterStatus(inv.device_status)"></span>
             </p>
             <div class="inverter-tags">
-                <span class="status-tag tag-sm" :class="inv.operating ? 'status-ok' : 'status-err'">OP</span>
-                <span class="status-tag tag-sm" :class="inv.producing ? 'status-ok' : 'status-err'">PROD</span>
-                <span class="status-tag tag-sm" :class="inv.communicating ? 'status-ok' : 'status-err'">COMM</span>
+                <span class="status-tag tag-sm" :class="inv.operating ? 'status-ok' : 'status-err'" title="Operating">OP</span>
+                <span class="status-tag tag-sm" :class="inv.producing ? 'status-ok' : 'status-err'" title="Producing">PROD</span>
+                <span class="status-tag tag-sm" :class="inv.communicating ? 'status-ok' : 'status-err'" title="Communicating">COMM</span>
             </div>
         </div>
     </template>

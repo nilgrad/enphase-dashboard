@@ -1,14 +1,14 @@
 <div class="tab-header">
     <h2>Real-Time Meter Readings</h2>
     <div class="tab-controls">
-        <label class="control-label">Auto-Refresh:</label>
-        <select x-model.number="refreshRate" @change="updateRefreshInterval()">
+        <label class="control-label" for="refresh-rate-select">Auto-Refresh:</label>
+        <select id="refresh-rate-select" x-model.number="refreshRate" @change="updateRefreshInterval()">
             <option value="0">Off</option>
             <option value="1000">1 Second</option>
             <option value="3000">3 Seconds</option>
             <option value="5000">5 Seconds</option>
         </select>
-        <button class="refresh-btn" @click="refreshLiveMeters()" :disabled="loadingMeters">
+        <button type="button" class="refresh-btn" @click="refreshLiveMeters()" :disabled="loadingMeters">
             <span class="btn-content-stack">
                 <span :class="{ 'invisible-text': loadingMeters }">Refresh</span>
                 <span :class="{ 'invisible-text': !loadingMeters }" class="loading">Refreshing...</span>
@@ -21,37 +21,65 @@
     <p class="loading">Loading real-time data...</p>
 </div>
 
-<div class="data-box" x-show="meters.length > 0">
+<div class="live-hero-grid" x-show="meters.length > 0">
     <!-- 1. Solar Production -->
-    <div class="live-card">
-        <div>
-            <div class="live-label">Solar Production</div>
-            <div class="live-subtext">Generating power from panels</div>
+    <div class="live-card live-card-solar">
+        <div class="live-card-top">
+            <div>
+                <div class="live-label">Solar Production</div>
+                <div class="live-subtext">Generating power from panels</div>
+            </div>
+            <span class="live-icon-badge solar" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="4"></circle>
+                    <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"></path>
+                </svg>
+            </span>
         </div>
-        <div class="live-val text-success" x-text="formatPower(prodPower)">0 W</div>
+        <div class="live-val text-solar" x-text="formatPower(prodPower)">0 W</div>
     </div>
 
     <!-- 2. Grid Flow -->
-    <div class="live-card">
-        <div>
-            <div class="live-label" x-text="gridPower < 0 ? 'Exporting to Grid' : 'Importing from Grid'">Grid Flow</div>
-            <div class="live-subtext">Net flow at the meter</div>
+    <div class="live-card" :class="gridPower < 0 ? 'live-card-export' : 'live-card-import'">
+        <div class="live-card-top">
+            <div>
+                <div class="live-label" x-text="gridPower < 0 ? 'Exporting to Grid' : 'Importing from Grid'">Grid Flow</div>
+                <div class="live-subtext">Net flow at the meter</div>
+            </div>
+            <span class="live-icon-badge" :class="gridPower < 0 ? 'export' : 'import'" aria-hidden="true">
+                <svg x-show="gridPower < 0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <line x1="7" y1="17" x2="17" y2="7"></line>
+                    <polyline points="7 7 17 7 17 17"></polyline>
+                </svg>
+                <svg x-show="gridPower >= 0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <line x1="17" y1="7" x2="7" y2="17"></line>
+                    <polyline points="17 17 7 17 7 7"></polyline>
+                </svg>
+            </span>
         </div>
-        <div class="live-val" :class="gridPower < 0 ? 'text-success' : 'text-danger'" x-text="formatPower(Math.abs(gridPower))">0 W</div>
+        <div class="live-val" :class="gridPower < 0 ? 'text-export' : 'text-danger'" x-text="formatPower(Math.abs(gridPower))">0 W</div>
     </div>
 
     <!-- 3. Consumption -->
     <div class="live-card live-card-consumption">
-        <div>
-            <div class="live-label">House Consumption</div>
-            <div class="live-subtext">Total power being used by home</div>
+        <div class="live-card-top">
+            <div>
+                <div class="live-label">House Consumption</div>
+                <div class="live-subtext">Total power used by home</div>
+            </div>
+            <span class="live-icon-badge consumption" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
+                    <polyline points="9 22 9 12 15 12 15 22"></polyline>
+                </svg>
+            </span>
         </div>
-        <div class="live-val text-accent" x-text="formatPower(consPower)">0 W</div>
+        <div class="live-val text-consumption" x-text="formatPower(consPower)">0 W</div>
     </div>
 </div>
 
 <!-- Daily Solar Status -->
-<div class="data-box mt-1" x-show="todayDate">
+<div class="data-box mt-1-5" x-show="todayDate">
     <h3 class="section-heading-row">
         Daily Solar Status <span class="section-date-label" x-text="'(' + formatDateLong(todayDate) + ')'"></span>
         <span class="status-tag tag-sm status-tag-warn" x-show="todayStale && hasTodayStats">Stale</span>
@@ -71,14 +99,17 @@
             <div class="metric-card-value live-metric-value" x-text="todayExport.toFixed(2) + ' kWh'">0.00 kWh</div>
         </div>
         <div class="metric-card live-metric-card"
-             :class="todayNetGrid > 0 ? 'solar' : (todayNetGrid < 0 ? 'imported' : 'consumed')">
-            <div class="metric-card-title live-metric-title">Net Grid Flow</div>
+             :class="todayNetGrid > 0 ? 'exported' : (todayNetGrid < 0 ? 'imported' : 'consumed')">
+            <div class="metric-card-header">
+                <div class="metric-card-title live-metric-title">Net Grid Flow</div>
+                <span class="status-tag tag-sm" :class="todayNetGrid >= 0 ? 'status-ok' : 'status-err'" x-text="todayNetGrid >= 0 ? 'Export' : 'Import'">Export</span>
+            </div>
             <div class="metric-card-value live-metric-value"
-                 x-text="(todayNetGrid >= 0 ? '+' : '-') + Math.abs(todayNetGrid).toFixed(2) + (todayNetGrid >= 0 ? ' kWh Export' : ' kWh Import')">
-                +0.00 kWh Export
+                 x-text="(todayNetGrid >= 0 ? '+' : '-') + Math.abs(todayNetGrid).toFixed(2) + ' kWh'">
+                +0.00 kWh
             </div>
         </div>
-        <div class="metric-card consumed live-metric-card">
+        <div class="metric-card imported live-metric-card">
             <div class="metric-card-title live-metric-title">Grid Imported</div>
             <div class="metric-card-value live-metric-value" x-text="todayImport.toFixed(2) + ' kWh'">0.00 kWh</div>
         </div>

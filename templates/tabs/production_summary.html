@@ -1,6 +1,6 @@
 <div class="tab-header">
     <h2>System Summary</h2>
-    <button class="refresh-btn" @click="fetchSummary()" :disabled="loadingSummary">
+    <button type="button" class="refresh-btn" @click="fetchSummary()" :disabled="loadingSummary">
         <span class="btn-content-stack">
             <span :class="{ 'invisible-text': loadingSummary }">Refresh Summary</span>
             <span :class="{ 'invisible-text': !loadingSummary }" class="loading">Refreshing...</span>
@@ -18,7 +18,7 @@
             <div class="metric-card-title">Lifetime Solar</div>
             <div class="metric-card-value" x-text="lifetimeSolar"></div>
         </div>
-        <div class="metric-card consumed">
+        <div class="metric-card imported">
             <div class="metric-card-title">Grid Imported</div>
             <div class="metric-card-value" x-text="lifetimeImported"></div>
         </div>
@@ -38,7 +38,7 @@
 </div>
 
 <!-- Daily Solar Effectiveness Chart -->
-<div id="effectiveness-chart-container" class="data-box chart-box mt-1" x-show="showEffectivenessChart">
+<div id="effectiveness-chart-container" class="data-box chart-box mt-1-5" x-show="showEffectivenessChart">
     <div class="chart-box-header">
         <h3 class="section-title-primary mb-0">Daily Solar vs. Grid Usage &amp; Effectiveness</h3>
         <span class="chart-subtitle">
@@ -51,7 +51,7 @@
 </div>
 
 <!-- Monthly Solar Effectiveness Chart -->
-<div id="monthly-chart-container" class="data-box chart-box mt-1" x-show="showMonthlyChart">
+<div id="monthly-chart-container" class="data-box chart-box mt-1-5" x-show="showMonthlyChart">
     <div class="chart-box-header">
         <h3 class="section-title-primary mb-0">Monthly Solar vs. Grid Usage &amp; Effectiveness</h3>
         <span class="chart-subtitle">
