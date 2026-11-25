@@ -6,7 +6,7 @@ Bypasses cloud latency and rate limits to deliver low-latency telemetry, resilie
 
 See [CHANGELOG.md](CHANGELOG.md) for the v1.1.0 release notes.
 
-![Enphase Local Dashboard](docs/screenshot.png)
+![Enphase Local Dashboard](docs/screenshot.gif)
 
 ---
 
