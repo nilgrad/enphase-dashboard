@@ -589,6 +589,8 @@ document.addEventListener('alpine:init', () => {
         gridPower: 0,
         consPower: 0,
         loadingMeters: false,
+        manualRefreshingMeters: false,
+        lastMetersUpdateText: '',
         todayDate: '',
         todayProduction: 0,
         todayImport: 0,
@@ -653,6 +655,42 @@ document.addEventListener('alpine:init', () => {
             if (this.themePreference === 'dark') return 'Dark';
             if (this.themePreference === 'light') return 'Light';
             return 'Auto';
+        },
+
+        get isSolarActive() {
+            return this.prodPower >= 10;
+        },
+
+        get gridFlowDirection() {
+            if (this.gridPower <= -10) return 'export';
+            if (this.gridPower >= 10) return 'import';
+            return 'neutral';
+        },
+
+        get liveSolarSharePct() {
+            if (this.consPower <= 0) {
+                return this.prodPower >= 10 ? 100 : 0;
+            }
+            const directSolar = Math.max(0, Math.min(this.prodPower, this.consPower));
+            return Math.min(100, Math.max(0, Math.round((directSolar / this.consPower) * 100)));
+        },
+
+        get liveGridSharePct() {
+            if (this.consPower <= 0) return 0;
+            return Math.max(0, 100 - this.liveSolarSharePct);
+        },
+
+        get liveSourceSummary() {
+            if (this.consPower <= 0 && !this.isSolarActive) return 'System idle';
+            if (this.gridFlowDirection === 'export') {
+                return `100% Solar Powered · Exporting ${this.formatPower(Math.abs(this.gridPower))}`;
+            }
+            if (!this.isSolarActive) return '100% Grid Powered';
+            return `${this.liveSolarSharePct}% Solar · ${this.liveGridSharePct}% Grid Import`;
+        },
+
+        get todayCoverageClamped() {
+            return Math.min(100, Math.max(0, this.todayCoverage || 0));
         },
 
         initTheme() {
@@ -820,13 +858,13 @@ document.addEventListener('alpine:init', () => {
             if (tabName === 'events-tab') this.fetchEvents();
         },
 
-        startLivePolling({ forceToday = false } = {}) {
+        startLivePolling({ forceToday = false, manual = false } = {}) {
             this.stopRefreshTimer();
             if (this.activeTab !== 'live-tab' || document.hidden) {
                 return;
             }
             const gen = this.pollGeneration;
-            this.fetchMeters({ forceToday, pollGeneration: gen });
+            this.fetchMeters({ forceToday, pollGeneration: gen, manual });
         },
 
         scheduleNextPoll(gen) {
@@ -868,9 +906,9 @@ document.addEventListener('alpine:init', () => {
                 return;
             }
             if (this.refreshRate > 0 && this.activeTab === 'live-tab' && !document.hidden) {
-                this.startLivePolling({ forceToday: true });
+                this.startLivePolling({ forceToday: true, manual: true });
             } else {
-                this.fetchMeters({ forceToday: true });
+                this.fetchMeters({ forceToday: true, manual: true });
             }
         },
 
@@ -940,7 +978,7 @@ document.addEventListener('alpine:init', () => {
             }
         },
 
-        async fetchMeters({ forceToday = false, pollGeneration = null } = {}) {
+        async fetchMeters({ forceToday = false, pollGeneration = null, manual = false } = {}) {
             if (this.metersInFlight) {
                 if (pollGeneration !== null) {
                     this.scheduleNextPoll(pollGeneration);
@@ -949,6 +987,9 @@ document.addEventListener('alpine:init', () => {
             }
             this.metersInFlight = true;
             this.loadingMeters = true;
+            if (manual) {
+                this.manualRefreshingMeters = true;
+            }
             try {
                 const shouldFetchToday =
                     forceToday ||
@@ -965,6 +1006,11 @@ document.addEventListener('alpine:init', () => {
                         this.prodPower = prodMeter.activePower || 0;
                         this.gridPower = gridMeter.activePower || 0;
                         this.consPower = this.prodPower + this.gridPower;
+                        this.lastMetersUpdateText = new Date().toLocaleTimeString([], {
+                            hour: '2-digit',
+                            minute: '2-digit',
+                            second: '2-digit',
+                        });
                     }
                     this.clearError('meters');
                 })();
@@ -979,6 +1025,7 @@ document.addEventListener('alpine:init', () => {
                 this.setError(`Unable to load live meter readings: ${err.message}`, 'meters');
             } finally {
                 this.loadingMeters = false;
+                this.manualRefreshingMeters = false;
                 this.metersInFlight = false;
                 if (pollGeneration !== null) {
                     this.scheduleNextPoll(pollGeneration);

@@ -597,12 +597,276 @@ select:focus {
     border-color: var(--border-strong);
 }
 
-/* Live Hero Cards (3-column real-time power overview) */
+/* Live Hero Cards & Energy Flow Stage */
+.live-status-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.24rem 0.68rem;
+    border-radius: 9999px;
+    font-size: 0.76rem;
+    font-weight: 600;
+    border: 1px solid var(--border-card);
+    background: var(--bg-subtle);
+    color: var(--text-muted);
+    font-variant-numeric: tabular-nums;
+}
+
+.live-status-pill.is-live {
+    background: var(--success-light);
+    border-color: var(--success-border);
+    color: var(--success-text);
+}
+
+.live-pulse-dot {
+    width: 0.48rem;
+    height: 0.48rem;
+    border-radius: 50%;
+    background: var(--text-muted);
+    display: inline-block;
+    flex-shrink: 0;
+}
+
+.live-status-pill.is-live .live-pulse-dot {
+    background: var(--success);
+    box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.55);
+    animation: livePulse 2s ease-out infinite;
+}
+
+.live-status-sep {
+    opacity: 0.55;
+}
+
+.live-status-time {
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    opacity: 0.9;
+}
+
+.energy-flow-panel {
+    border: 1px solid var(--border-card);
+    border-radius: var(--radius-md);
+    background: var(--bg-card);
+    padding: 1.25rem;
+    box-shadow: var(--shadow-sm);
+}
+
+.energy-flow-stage {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 74px minmax(0, 1fr) 74px minmax(0, 1fr);
+    align-items: center;
+    gap: 0.35rem;
+}
+
+.flow-connector {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0.25rem;
+    color: var(--text-muted);
+    min-width: 0;
+}
+
+.flow-connector-badge {
+    font-size: 0.65rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    padding: 0.12rem 0.42rem;
+    border-radius: 999px;
+    background: var(--bg-subtle);
+    border: 1px solid var(--border-card);
+    color: var(--text-muted);
+    white-space: nowrap;
+}
+
+.flow-connector.flow-solar {
+    color: var(--solar);
+}
+
+.flow-connector.flow-solar .flow-connector-badge {
+    background: var(--solar-light);
+    border-color: var(--solar-border);
+    color: var(--solar-text);
+}
+
+.flow-connector.flow-export {
+    color: var(--export);
+}
+
+.flow-connector.flow-export .flow-connector-badge {
+    background: var(--export-light);
+    border-color: var(--export-border);
+    color: var(--export-text);
+}
+
+.flow-connector.flow-import {
+    color: var(--import);
+}
+
+.flow-connector.flow-import .flow-connector-badge {
+    background: var(--import-light);
+    border-color: var(--import-border);
+    color: var(--import-text);
+}
+
+.flow-svg {
+    width: 100%;
+    height: 20px;
+    overflow: visible;
+}
+
+.flow-track {
+    stroke: var(--border-strong);
+    stroke-width: 2;
+    stroke-linecap: round;
+    opacity: 0.45;
+}
+
+.flow-stream {
+    stroke: currentColor;
+    stroke-width: 2.5;
+    stroke-linecap: round;
+    stroke-dasharray: 6 8;
+    opacity: 0;
+}
+
+.flow-arrow {
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2.2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
+.flow-connector.flow-idle .flow-arrow {
+    opacity: 0.4;
+}
+
+.flow-connector.flow-forward .flow-stream {
+    opacity: 1;
+    animation: flowDashForward 1.15s linear infinite;
+}
+
+.flow-connector.flow-reverse .flow-stream {
+    opacity: 1;
+    animation: flowDashReverse 1.15s linear infinite;
+}
+
+.power-mix-wrap {
+    margin-top: 1.15rem;
+    padding-top: 1rem;
+    border-top: 1px solid var(--border-color);
+}
+
+.power-mix-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.4rem 0.75rem;
+    margin-bottom: 0.5rem;
+}
+
+.power-mix-label {
+    font-size: 0.74rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-muted);
+}
+
+.power-mix-summary {
+    font-size: 0.84rem;
+    font-weight: 700;
+    color: var(--text-main);
+    font-variant-numeric: tabular-nums;
+}
+
+.power-mix-track {
+    width: 100%;
+    height: 8px;
+    border-radius: 999px;
+    background: var(--bg-subtle);
+    border: 1px solid var(--border-card);
+    overflow: hidden;
+    display: flex;
+}
+
+.power-mix-segment {
+    height: 100%;
+    transition: width 0.35s ease;
+}
+
+.power-mix-segment.solar {
+    background: var(--solar);
+}
+
+.power-mix-segment.import {
+    background: var(--import);
+}
+
+.coverage-bar-track {
+    width: 100%;
+    height: 5px;
+    border-radius: 999px;
+    background: var(--border-card);
+    overflow: hidden;
+    margin-top: 0.35rem;
+}
+
+.coverage-bar-fill {
+    height: 100%;
+    border-radius: 999px;
+    background: var(--offset);
+    transition: width 0.35s ease;
+}
+
+/* Skeleton Loader */
+.skeleton-hero-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 1rem;
+}
+
+.skeleton-card {
+    border: 1px solid var(--border-card);
+    border-radius: var(--radius-md);
+    padding: 1.25rem;
+    background: var(--bg-subtle);
+    display: flex;
+    flex-direction: column;
+    gap: 0.85rem;
+}
+
+.skeleton-line {
+    border-radius: 6px;
+    background: linear-gradient(90deg, var(--border-color) 25%, var(--border-card) 50%, var(--border-color) 75%);
+    background-size: 200% 100%;
+    animation: skeletonShimmer 1.4s ease-in-out infinite;
+}
+
+.skeleton-line-sm {
+    height: 0.85rem;
+    width: 55%;
+}
+
+.skeleton-line-lg {
+    height: 1.9rem;
+    width: 42%;
+}
+
 .live-hero-grid {
     display: grid;
     grid-template-columns: repeat(3, 1fr);
     gap: 1rem;
     margin-top: 0.25rem;
+}
+
+.live-card.live-card-neutral {
+    border-top-color: var(--border-strong);
+    background: var(--bg-subtle);
 }
 
 .live-card {
@@ -1418,8 +1682,45 @@ pre {
     to { transform: rotate(360deg); }
 }
 
+@keyframes livePulse {
+    0% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.55); }
+    70% { box-shadow: 0 0 0 6px rgba(16, 185, 129, 0); }
+    100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
+}
+
+@keyframes flowDashForward {
+    from { stroke-dashoffset: 28; }
+    to { stroke-dashoffset: 0; }
+}
+
+@keyframes flowDashReverse {
+    from { stroke-dashoffset: 0; }
+    to { stroke-dashoffset: 28; }
+}
+
+@keyframes skeletonShimmer {
+    0% { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
+}
+
 /* Responsive Breakpoints */
-@media (max-width: 900px) {
+@media (max-width: 960px) {
+    .energy-flow-stage {
+        grid-template-columns: 1fr;
+        gap: 0.65rem;
+    }
+    .flow-connector {
+        flex-direction: row;
+        gap: 0.5rem;
+        padding: 0.1rem 0;
+    }
+    .flow-svg {
+        width: 56px;
+        height: 16px;
+    }
+    .skeleton-hero-grid {
+        grid-template-columns: 1fr;
+    }
     .live-hero-grid {
         grid-template-columns: 1fr;
     }

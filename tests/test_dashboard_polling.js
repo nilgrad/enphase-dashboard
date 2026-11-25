@@ -446,3 +446,61 @@ test('shared effectiveness chart builder guards Math.max against empty arrays', 
     // 35/20 * 100 = 175% -> rounded up to nearest 50 = 200
     assert.equal(highCfg.options.scales.y1.max, 200);
 });
+
+test('background polling keeps manualRefreshingMeters false while manual refresh toggles it and computes live flow metrics', async () => {
+    let pendingMetersResolve = null;
+    const harness = createHarness({
+        fetchImpl(url) {
+            if (url === '/api/meters') {
+                return new Promise((resolve) => {
+                    pendingMetersResolve = () => resolve({
+                        ok: true,
+                        status: 200,
+                        json: () => Promise.resolve(SAMPLE_METERS),
+                    });
+                });
+            }
+            if (url === '/api/history/today') return okJson(SAMPLE_TODAY);
+            return okJson([]);
+        },
+    });
+
+    const { component, flushMicrotasks } = harness;
+    component.refreshRate = 0;
+    component.init();
+    await flushMicrotasks();
+
+    // Initial background fetch should NOT flicker the manual refresh button state
+    assert.equal(component.loadingMeters, true);
+    assert.equal(component.manualRefreshingMeters, false);
+
+    pendingMetersResolve();
+    await flushMicrotasks();
+    assert.equal(component.loadingMeters, false);
+    assert.equal(component.manualRefreshingMeters, false);
+    assert.ok(component.lastMetersUpdateText.length > 0);
+
+    // SAMPLE_METERS: prod=2500W, grid=-1000W (exporting), cons=1500W
+    assert.equal(component.isSolarActive, true);
+    assert.equal(component.gridFlowDirection, 'export');
+    assert.equal(component.liveSolarSharePct, 100);
+    assert.equal(component.liveGridSharePct, 0);
+    assert.ok(component.liveSourceSummary.includes('100% Solar Powered'));
+
+    // Mixed state: prod=1000W, grid=+1000W (importing), cons=2000W -> 50% solar / 50% grid
+    component.prodPower = 1000;
+    component.gridPower = 1000;
+    component.consPower = 2000;
+    assert.equal(component.gridFlowDirection, 'import');
+    assert.equal(component.liveSolarSharePct, 50);
+    assert.equal(component.liveGridSharePct, 50);
+
+    // Manual refresh SHOULD toggle manualRefreshingMeters while in flight
+    component.refreshLiveMeters();
+    await flushMicrotasks();
+    assert.equal(component.manualRefreshingMeters, true);
+
+    pendingMetersResolve();
+    await flushMicrotasks();
+    assert.equal(component.manualRefreshingMeters, false);
+});
