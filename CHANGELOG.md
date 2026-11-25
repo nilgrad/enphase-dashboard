@@ -5,6 +5,20 @@ All notable changes to **Enphase Local Dashboard** are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0] - 2026-11-25
+
+Major UI/UX upgrade introducing a live 3-node energy flow diagram, emerald-green solar palette, History timeframe controls and CSV export, inverter health filtering, phase totals, and navigation status badges.
+
+### Added
+- **Live Energy Flow Stage & Power Mix Bar** (#20): Added a 3-node Solar -> Home <-> Grid visualization with animated directional SVG flow connectors, a real-time home solar vs. grid power mix bar, a daily solar coverage progress bar, and an initial 3-card skeleton shimmer loader.
+- **Calm Live Polling Status Indicator** (#20): Added a `Live / Paused` status pill with last-updated timestamp (`HH:MM:SS`) and separated background auto-polling from manual refreshes so the Refresh button no longer flickers every 1 to 3 seconds.
+- **History Timeframe Controls, Period Totals & CSV Export** (#21): Added `7D / 14D / 30D` timeframe selector pills, a period summary strip, a right-aligned Solar Coverage (%) column, human-readable table dates, and one-click client-side CSV export (`enphase-daily-history.csv`).
+- **Inverter Health Filtering, Phase Totals & Tab Badges** (#22): Added `All` / `Issues` inverter filter pills with automatic unhealthy-first sorting, relative last-reported timestamps with full-timestamp tooltips, multi-phase `Total / Avg` footer rows, Health/Events count badges on navigation tabs, and a mobile tab-strip horizontal scroll fade cue.
+
+### Changed
+- **Emerald Green Solar Palette** (#19): Updated Solar Production, brand accents, SVG favicon, and TRMNL preview chrome from amber to Emerald Green, with Sky Blue for Grid Export, Cool Slate for House Consumption, Rose Red for Grid Import, and Violet for Solar Coverage.
+- **History Bar + Line Combo Chart** (#21): Converted House Consumption in the Daily Energy History chart from a 4th bar series into a smooth trend line overlay above Solar Production, Grid Export, and Grid Import bars with shared index tooltips.
+
 ## [1.0.1] - 2026-11-25
 
 Visual design refresh with a solar-native color system, Light/Dark/Auto theme support, typography improvements, and TRMNL preview polish.
