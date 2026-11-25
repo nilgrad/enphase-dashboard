@@ -6,16 +6,19 @@ Bypasses cloud latency and rate limits to deliver low-latency telemetry, resilie
 
 See [CHANGELOG.md](CHANGELOG.md) for the v1.1.0 release notes.
 
+![Enphase Local Dashboard](docs/screenshot.png)
+
 ---
 
 ## Features
 
-- **100% Offline-First LAN UI**: Polls local gateway endpoints directly and serves pinned local copies of [Alpine.js](https://alpinejs.dev/) and [Chart.js](https://www.chartjs.org/) from `static/vendor/` with system fonts—zero external CDN or cloud dependencies.
-- **Real-Time Power Flow**: Live gauges for Solar Production, Net Grid Flow (import/export), and House Consumption with selectable auto-refresh intervals (1s–5s), in-flight overlap protection, and automatic pause when backgrounded.
+- **100% Offline-First LAN UI with Light & Dark Themes**: Polls local gateway endpoints directly and serves pinned local copies of [Alpine.js](https://alpinejs.dev/) and [Chart.js](https://www.chartjs.org/) from `static/vendor/` alongside bundled `Monaspace Krypton` monospace and system fonts, with an `Auto / Dark / Light` theme toggle and zero external CDN or cloud dependencies.
+- **Real-Time Energy Flow**: Interactive 3-node Solar -> Home <-> Grid flow stage with animated directional connectors, a live home solar vs. grid power mix bar, selectable auto-refresh intervals (1s to 5s) with calm polling status, in-flight overlap protection, and automatic pause when backgrounded.
+- **Interactive History & Analytics**: Daily Energy History bar + line combo chart with `7D / 14D / 30D` timeframe selector pills, period totals summary strip, Solar Coverage % tracking, paginated logs, one-click CSV export, and 14-day/6-month effectiveness trends.
 - **Cached Gateway Sessions & JWT Monitoring**: Reuses a thread-safe authenticated Envoy session with explicit HTTP timeouts, automatic `401`/`403` re-authentication, and proactive dashboard warnings before your annual Enphase JWT expires.
 - **Resilient Energy Accounting**: Records hardware-level lifetime cumulative active energy counters ($Wh$) every 15 minutes with half-open local-timezone DST day boundaries and automatic multi-day outage interpolation.
-- **Split-Phase & Inverter Health**: Dynamically detects production and grid meters via `/ivp/meters` metadata and monitors per-phase electrical readings alongside individual microinverter operating statuses.
-- **Native TRMNL E-Ink Display (BYOS)**: Serves [TRMNL OG](https://trmnl.com) devices via authenticated BYOS endpoints (`Access-Token` + short-lived signed image URLs) with atomic 800×480 1-bit rendering and persistent telemetry.
+- **Split-Phase & Inverter Health**: Dynamically detects production and grid meters via `/ivp/meters` metadata, displays per-phase electrical readings with `Total / Avg` summary rows, and monitors per-inverter health with `All / Issues` filtering, unhealthy-first sorting, relative last-reported timestamps, and tab alert/issue count badges.
+- **Native TRMNL E-Ink Display (BYOS)**: Serves [TRMNL OG](https://trmnl.com) devices via authenticated BYOS endpoints (`Access-Token` + short-lived signed image URLs) with atomic 800×480 1-bit rendering, responsive in-browser preview, and persistent telemetry.
 
 ---
 
