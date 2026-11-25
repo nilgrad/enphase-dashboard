@@ -38,6 +38,15 @@
                             </tr>
                         </template>
                     </tbody>
+                    <tfoot x-show="meter.channels && meter.channels.length > 1">
+                        <tr class="table-summary-row">
+                            <td class="fw-bold text-main">Total / Avg</td>
+                            <td class="num-col fw-bold text-main" x-text="formatPower(summarizeMeterPhases(meter).totalPower)"></td>
+                            <td class="num-col text-muted" x-text="summarizeMeterPhases(meter).avgVoltage.toFixed(2) + ' V'"></td>
+                            <td class="num-col text-muted" x-text="summarizeMeterPhases(meter).avgFreq.toFixed(2) + ' Hz'"></td>
+                            <td class="num-col text-muted" x-text="summarizeMeterPhases(meter).avgPwrFactor.toFixed(2)"></td>
+                        </tr>
+                    </tfoot>
                 </table>
             </div>
         </div>

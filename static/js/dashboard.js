@@ -695,6 +695,7 @@ document.addEventListener('alpine:init', () => {
             total: 0
         },
         inverters: [],
+        healthFilter: 'all',
         loadingHealth: false,
 
         // Connectivity state
@@ -984,6 +985,54 @@ document.addEventListener('alpine:init', () => {
         formatDate(timestamp) {
             if (!timestamp) return 'Never';
             return new Date(timestamp * 1000).toLocaleString();
+        },
+
+        formatRelativeTime(timestamp) {
+            if (!timestamp) return 'Never';
+            const diffSec = Math.max(0, Math.floor((Date.now() - timestamp * 1000) / 1000));
+            if (diffSec < 60) return 'Just now';
+            if (diffSec < 3600) return `${Math.floor(diffSec / 60)}m ago`;
+            if (diffSec < 86400) return `${Math.floor(diffSec / 3600)}h ago`;
+            return `${Math.floor(diffSec / 86400)}d ago`;
+        },
+
+        isInverterHealthy(inv) {
+            return Boolean(inv && inv.operating && inv.producing && inv.communicating);
+        },
+
+        get healthIssueCount() {
+            return this.inverters.filter(inv => !this.isInverterHealthy(inv)).length;
+        },
+
+        get filteredInverters() {
+            const list = this.healthFilter === 'issues'
+                ? this.inverters.filter(inv => !this.isInverterHealthy(inv))
+                : [...this.inverters];
+            return list.sort((a, b) => Number(this.isInverterHealthy(a)) - Number(this.isInverterHealthy(b)));
+        },
+
+        summarizeMeterPhases(meter) {
+            const channels = Array.isArray(meter && meter.channels) ? meter.channels : [];
+            if (channels.length === 0) {
+                return { totalPower: 0, avgVoltage: 0, avgFreq: 0, avgPwrFactor: 0 };
+            }
+            let totalPower = 0;
+            let sumVoltage = 0;
+            let sumFreq = 0;
+            let sumPwrFactor = 0;
+            for (const ch of channels) {
+                totalPower += Number(ch && ch.activePower) || 0;
+                sumVoltage += Number(ch && ch.voltage) || 0;
+                sumFreq += Number(ch && ch.freq) || 0;
+                sumPwrFactor += Number(ch && ch.pwrFactor) || 0;
+            }
+            const count = channels.length;
+            return {
+                totalPower,
+                avgVoltage: sumVoltage / count,
+                avgFreq: sumFreq / count,
+                avgPwrFactor: sumPwrFactor / count,
+            };
         },
 
         formatDateLong(dateStr) {
