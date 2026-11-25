@@ -11,14 +11,58 @@
 </div>
 
 <div class="data-box chart-box mt-0">
-    <h3 class="section-title-primary">Solar Production, Grid Export &amp; House Consumption</h3>
+    <div class="chart-box-header">
+        <div>
+            <h3 class="section-title-primary mb-0">Solar Production, Grid Flow &amp; House Consumption</h3>
+            <span class="chart-subtitle" x-show="historyPeriodSummary.days > 0" x-text="'Showing ' + historyPeriodSummary.days + ' day' + (historyPeriodSummary.days === 1 ? '' : 's') + ' · Consumption shown as trend line'"></span>
+        </div>
+        <div class="range-pill-group" role="group" aria-label="History chart timeframe">
+            <button type="button" class="range-pill" :class="{ active: historyChartDays === 7 }" @click="setHistoryChartDays(7)">7D</button>
+            <button type="button" class="range-pill" :class="{ active: historyChartDays === 14 }" @click="setHistoryChartDays(14)">14D</button>
+            <button type="button" class="range-pill" :class="{ active: historyChartDays === 30 }" @click="setHistoryChartDays(30)">30D</button>
+        </div>
+    </div>
+
+    <div class="period-summary-strip" x-show="historyPeriodSummary.days > 0" x-cloak>
+        <div class="period-stat">
+            <span class="period-stat-label">Solar</span>
+            <span class="period-stat-value text-solar" x-text="historyPeriodSummary.production.toFixed(1) + ' kWh'"></span>
+        </div>
+        <div class="period-stat">
+            <span class="period-stat-label">Exported</span>
+            <span class="period-stat-value text-export" x-text="historyPeriodSummary.exported.toFixed(1) + ' kWh'"></span>
+        </div>
+        <div class="period-stat">
+            <span class="period-stat-label">Imported</span>
+            <span class="period-stat-value text-danger" x-text="historyPeriodSummary.imported.toFixed(1) + ' kWh'"></span>
+        </div>
+        <div class="period-stat">
+            <span class="period-stat-label">Consumed</span>
+            <span class="period-stat-value text-consumption" x-text="historyPeriodSummary.consumption.toFixed(1) + ' kWh'"></span>
+        </div>
+        <div class="period-stat">
+            <span class="period-stat-label">Coverage</span>
+            <span class="period-stat-value text-offset" x-text="historyPeriodSummary.coveragePct.toFixed(1) + '%'"></span>
+        </div>
+    </div>
+
     <div class="chart-canvas-wrap-lg">
         <canvas id="historyChart"></canvas>
     </div>
 </div>
 
 <div class="data-box mt-1-5">
-    <h3 class="section-title">Detailed History Log</h3>
+    <div class="table-section-header">
+        <h3 class="section-title mb-0">Detailed History Log</h3>
+        <button type="button" class="secondary-action-btn" @click="exportHistoryCsv()" :disabled="historyLogs.length === 0">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                <polyline points="7 10 12 15 17 10"></polyline>
+                <line x1="12" y1="15" x2="12" y2="3"></line>
+            </svg>
+            <span>Export CSV</span>
+        </button>
+    </div>
     <div class="table-scroll">
         <table class="data-table data-table-primary" id="history-table">
             <thead>
@@ -28,27 +72,29 @@
                     <th class="num-col">Exported to Grid</th>
                     <th class="num-col">Imported from Grid</th>
                     <th class="num-col">House Consumption</th>
+                    <th class="num-col">Coverage</th>
                     <th>Status</th>
                 </tr>
             </thead>
             <tbody>
                 <template x-if="loadingHistory && historyLogs.length === 0">
                     <tr>
-                        <td colspan="6" class="loading table-empty-cell">Updating history data...</td>
+                        <td colspan="7" class="loading table-empty-cell">Updating history data...</td>
                     </tr>
                 </template>
                 <template x-if="!loadingHistory && historyLogs.length === 0">
                     <tr>
-                        <td colspan="6" class="table-empty-cell">No historical data in database yet. Try running "Sync Database Now".</td>
+                        <td colspan="7" class="table-empty-cell">No historical data in database yet. Try running "Sync Database Now".</td>
                     </tr>
                 </template>
                 <template x-for="row in paginatedHistoryLogs" :key="row.date">
                     <tr>
-                        <td class="fw-bold text-main" x-text="row.date"></td>
+                        <td class="fw-bold text-main" :title="row.date" x-text="formatDateLong(row.date)"></td>
                         <td class="num-col text-solar fw-semibold" x-text="row.production_kwh.toFixed(2) + ' kWh'"></td>
                         <td class="num-col text-export fw-semibold" x-text="row.export_kwh.toFixed(2) + ' kWh'"></td>
                         <td class="num-col text-danger fw-semibold" x-text="row.import_kwh.toFixed(2) + ' kWh'"></td>
                         <td class="num-col text-consumption fw-bold" x-text="row.consumption_kwh.toFixed(2) + ' kWh'"></td>
+                        <td class="num-col text-offset fw-semibold" x-text="formatCoveragePct(row)"></td>
                         <td>
                             <span class="status-tag tag-sm status-ok" x-show="!row.is_interpolated">Normal</span>
                             <span class="status-tag tag-sm status-tag-warn" x-show="row.is_interpolated">Estimated</span>

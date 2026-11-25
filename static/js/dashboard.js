@@ -2,6 +2,7 @@ let historyChartInstance = null;
 let effectivenessChartInstance = null;
 let monthlyChartInstance = null;
 let lastHistoryChartData = null;
+let lastHistoryChartDays = 14;
 let lastEffectivenessChartData = null;
 let lastMonthlyChartData = null;
 const THEME_STORAGE_KEY = 'enphase-theme';
@@ -60,7 +61,7 @@ function getChartTheme() {
 
 function rerenderActiveChartsForTheme() {
     if (historyChartInstance && lastHistoryChartData) {
-        renderHistoryChart(lastHistoryChartData);
+        renderHistoryChart(lastHistoryChartData, lastHistoryChartDays);
     }
     if (effectivenessChartInstance && lastEffectivenessChartData) {
         renderEffectivenessChart(lastEffectivenessChartData);
@@ -198,68 +199,104 @@ async function parseJsonResponse(res) {
     return data;
 }
 
-function renderHistoryChart(data) {
-    lastHistoryChartData = data;
-    const canvas = document.getElementById('historyChart');
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-
-    if (historyChartInstance) {
-        historyChartInstance.destroy();
+function buildHistoryCsv(rows) {
+    const headers = [
+        'Date',
+        'Solar Production (kWh)',
+        'Grid Export (kWh)',
+        'Grid Import (kWh)',
+        'House Consumption (kWh)',
+        'Solar Coverage (%)',
+        'Status',
+    ];
+    const ordered = [...(rows || [])].reverse();
+    const lines = [headers.join(',')];
+    for (const row of ordered) {
+        const prod = Number(row.production_kwh) || 0;
+        const exp = Number(row.export_kwh) || 0;
+        const imp = Number(row.import_kwh) || 0;
+        const cons = Number(row.consumption_kwh) || 0;
+        const coverage = cons > 0 ? ((prod / cons) * 100).toFixed(1) : '0.0';
+        const status = row.is_interpolated ? 'Estimated' : 'Normal';
+        lines.push([
+            row.date || '',
+            prod.toFixed(2),
+            exp.toFixed(2),
+            imp.toFixed(2),
+            cons.toFixed(2),
+            coverage,
+            status,
+        ].join(','));
     }
+    return lines.join('\n') + '\n';
+}
 
+function buildHistoryChartConfig(data, days = 14) {
     const theme = getChartTheme();
-
-    // Limit chart data to the last 14 days
-    const chartData = (data || []).slice(-14);
+    const allRows = Array.isArray(data) ? data : [];
+    const chartData = days > 0 ? allRows.slice(-days) : allRows;
 
     const dates = chartData.map(d => formatChartDate(d.date));
     const productions = chartData.map(d => d.production_kwh);
     const exports = chartData.map(d => d.export_kwh);
     const imports = chartData.map(d => d.import_kwh);
     const consumptions = chartData.map(d => d.consumption_kwh);
+    const showLinePoints = chartData.length <= 31;
 
-    historyChartInstance = new Chart(ctx, {
+    return {
         type: 'bar',
         data: {
             labels: dates,
             datasets: [
                 {
+                    label: 'House Consumption (kWh)',
+                    type: 'line',
+                    data: consumptions,
+                    borderColor: theme.consumption,
+                    backgroundColor: `rgba(${theme.consumptionRgb}, 0.12)`,
+                    borderWidth: 2.5,
+                    pointRadius: showLinePoints ? 3 : 0,
+                    pointHoverRadius: 5,
+                    pointBackgroundColor: theme.consumption,
+                    tension: 0.3,
+                    fill: false,
+                    order: 0
+                },
+                {
                     label: 'Solar Production (kWh)',
+                    type: 'bar',
                     data: productions,
                     backgroundColor: `rgba(${theme.solarRgb}, 0.82)`,
                     borderColor: theme.solar,
                     borderWidth: 1,
-                    borderRadius: 5,
-                    borderSkipped: 'bottom'
+                    borderRadius: 4,
+                    borderSkipped: 'bottom',
+                    maxBarThickness: 28,
+                    order: 1
                 },
                 {
                     label: 'Grid Export (kWh)',
+                    type: 'bar',
                     data: exports,
                     backgroundColor: `rgba(${theme.exportRgb}, 0.78)`,
                     borderColor: theme.exportColor,
                     borderWidth: 1,
-                    borderRadius: 5,
-                    borderSkipped: 'bottom'
+                    borderRadius: 4,
+                    borderSkipped: 'bottom',
+                    maxBarThickness: 28,
+                    order: 1
                 },
                 {
                     label: 'Grid Import (kWh)',
+                    type: 'bar',
                     data: imports,
                     backgroundColor: `rgba(${theme.importRgb}, 0.78)`,
                     borderColor: theme.importColor,
                     borderWidth: 1,
-                    borderRadius: 5,
-                    borderSkipped: 'bottom'
-                },
-                {
-                    label: 'House Consumption (kWh)',
-                    data: consumptions,
-                    backgroundColor: `rgba(${theme.consumptionRgb}, 0.75)`,
-                    borderColor: theme.consumption,
-                    borderWidth: 1,
-                    borderRadius: 5,
-                    borderSkipped: 'bottom'
+                    borderRadius: 4,
+                    borderSkipped: 'bottom',
+                    maxBarThickness: 28,
+                    order: 1
                 }
             ]
         },
@@ -267,6 +304,10 @@ function renderHistoryChart(data) {
             responsive: true,
             maintainAspectRatio: false,
             animation: false,
+            interaction: {
+                mode: 'index',
+                intersect: false
+            },
             scales: {
                 y: {
                     beginAtZero: true,
@@ -287,6 +328,8 @@ function renderHistoryChart(data) {
                 x: {
                     ticks: {
                         color: theme.tickColor,
+                        maxRotation: 0,
+                        autoSkip: true,
                         font: { family: theme.fontFamily }
                     },
                     grid: {
@@ -323,6 +366,12 @@ function renderHistoryChart(data) {
                             }
                             return context[0].label;
                         },
+                        label: function(context) {
+                            const label = context.dataset.label || '';
+                            const val = context.parsed.y;
+                            if (val === null || val === undefined) return label;
+                            return `${label}: ${val.toFixed(2)} kWh`;
+                        },
                         afterBody: function(items) {
                             const dataIndex = items[0].dataIndex;
                             if (chartData[dataIndex] && chartData[dataIndex].is_interpolated) {
@@ -334,7 +383,22 @@ function renderHistoryChart(data) {
                 }
             }
         }
-    });
+    };
+}
+
+function renderHistoryChart(data, days = 14) {
+    lastHistoryChartData = data;
+    lastHistoryChartDays = days;
+    const canvas = document.getElementById('historyChart');
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    if (historyChartInstance) {
+        historyChartInstance.destroy();
+    }
+
+    historyChartInstance = new Chart(ctx, buildHistoryChartConfig(data, days));
 }
 
 function buildEffectivenessChartConfig(data, {
@@ -617,6 +681,7 @@ document.addEventListener('alpine:init', () => {
         loadingHistory: false,
         historyPage: 1,
         historyPageSize: 20,
+        historyChartDays: 14,
 
         // Phases state
         phases: [],
@@ -1105,7 +1170,7 @@ document.addEventListener('alpine:init', () => {
 
                 if (data.length > 0) {
                     this.$nextTick(() => {
-                        renderHistoryChart(data);
+                        renderHistoryChart(data, this.historyChartDays);
                     });
                 }
                 this.clearError('history');
@@ -1186,6 +1251,66 @@ document.addEventListener('alpine:init', () => {
             } finally {
                 this.loadingHealth = false;
             }
+        },
+
+        setHistoryChartDays(days) {
+            this.historyChartDays = days;
+            if (this.historyLogs.length > 0) {
+                renderHistoryChart(this.historyLogs, days);
+            }
+        },
+
+        get historyPeriodSlice() {
+            if (!Array.isArray(this.historyLogs) || this.historyLogs.length === 0) return [];
+            return this.historyChartDays > 0
+                ? this.historyLogs.slice(-this.historyChartDays)
+                : this.historyLogs;
+        },
+
+        get historyPeriodSummary() {
+            const slice = this.historyPeriodSlice;
+            let production = 0;
+            let exported = 0;
+            let imported = 0;
+            let consumption = 0;
+            for (const row of slice) {
+                production += Number(row.production_kwh) || 0;
+                exported += Number(row.export_kwh) || 0;
+                imported += Number(row.import_kwh) || 0;
+                consumption += Number(row.consumption_kwh) || 0;
+            }
+            const coveragePct = consumption > 0 ? (production / consumption) * 100 : 0;
+            return {
+                days: slice.length,
+                production,
+                exported,
+                imported,
+                consumption,
+                coveragePct,
+            };
+        },
+
+        formatCoveragePct(row) {
+            const cons = Number(row && row.consumption_kwh) || 0;
+            const prod = Number(row && row.production_kwh) || 0;
+            if (cons <= 0) return '0.0%';
+            return ((prod / cons) * 100).toFixed(1) + '%';
+        },
+
+        exportHistoryCsv() {
+            if (!this.historyLogs.length || typeof Blob === 'undefined' || typeof URL === 'undefined') {
+                return;
+            }
+            const csv = buildHistoryCsv(this.historyLogs);
+            const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = 'enphase-daily-history.csv';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(url);
         },
 
         get paginatedHistoryLogs() {
