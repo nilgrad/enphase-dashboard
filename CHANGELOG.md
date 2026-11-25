@@ -5,6 +5,23 @@ All notable changes to **Enphase Local Dashboard** are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.1] - 2026-11-25
+
+Visual design refresh with a solar-native color system, Light/Dark/Auto theme support, typography improvements, and TRMNL preview polish.
+
+### Added
+- **Light, Dark, and Auto Theme Toggle** (#18): Added a persisted `Auto / Dark / Light` theme switcher in the dashboard header with a no-flash startup script and live Chart.js theme re-rendering.
+
+### Changed
+- **Solar-Native Color Palette & Contrast** (#18): Replaced generic indigo chrome with Deep Slate + Solar Amber accents and unified semantic energy colors (Solar Amber for production, Emerald for export, Rose-Red for import, Slate-Blue for consumption, Violet for coverage/offset) with WCAG AA text contrast.
+- **Typography & Tabular Numerals** (#18): Registered the bundled local `Monaspace Krypton` font for gateway IP pills, inverter serial numbers, and telemetry readouts; added `font-variant-numeric: tabular-nums` across live metrics and tables; right-aligned numeric table columns.
+- **Header, Navigation, Cards & Charts** (#18): Upgraded the header with an inline SVG emblem, modernized the tab strip with inline SVG icons and ARIA tab semantics, converted real-time meter readings into a 3-column KPI hero grid, structured System Specs into key-value cards, and aligned Chart.js styling (rounded bars, theme-aware grids and tooltips).
+- **TRMNL Preview Alignment** (#18): Matched `/trmnl` colors with the dark slate + solar amber palette, added a `Back to Dashboard` link, removed the duplicate Telemetry JSON button, and made the 800x480 screen bezel scale fluidly on narrower viewports.
+
+### Fixed
+- **Semantic Color & Summary Refresh Polish** (#18): Corrected `Grid Imported` cards on Live and Summary tabs to use the `.imported` (red) modifier instead of neutral styling, replaced inline `:style` borders on inverter cards with semantic classes, and kept Summary charts mounted during refresh to prevent layout jumps.
+- **PostgreSQL Driver Compatibility** (#17): Switched to `psycopg[binary]` for SQLAlchemy 2.1 compatibility.
+
 ## [1.0.0] - 2026-11-24
 
 First stable production release featuring resilient energy accounting, gateway session caching, security hardening, offline-first frontend assets, container healthchecks, and automated test coverage.

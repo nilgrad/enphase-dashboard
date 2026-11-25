@@ -1,6 +1,6 @@
 <div class="tab-header">
     <h2>Phase Electrical Details</h2>
-    <button class="refresh-btn" @click="fetchPhases()" :disabled="loadingPhases">
+    <button type="button" class="refresh-btn" @click="fetchPhases()" :disabled="loadingPhases">
         <span class="btn-content-stack">
             <span :class="{ 'invisible-text': loadingPhases }">Refresh Phase Data</span>
             <span :class="{ 'invisible-text': !loadingPhases }" class="loading">Refreshing...</span>
@@ -12,7 +12,7 @@
     <p class="loading">Updating phase details...</p>
 </div>
 
-<div class="data-box phases-box" x-show="phases.length > 0">
+<div class="data-box phases-box mt-0" x-show="phases.length > 0">
     <template x-for="(meter, idx) in phases" :key="meter.eid">
         <div class="mb-2">
             <h3 class="section-divider-heading" x-text="formatMeterName(meter, idx)"></h3>
@@ -21,20 +21,20 @@
                     <thead>
                         <tr>
                             <th>Channel</th>
-                            <th>Active Power</th>
-                            <th>Voltage</th>
-                            <th>Freq</th>
-                            <th>Power Factor</th>
+                            <th class="num-col">Active Power</th>
+                            <th class="num-col">Voltage</th>
+                            <th class="num-col">Freq</th>
+                            <th class="num-col">Power Factor</th>
                         </tr>
                     </thead>
                     <tbody>
                         <template x-for="(ch, cidx) in meter.channels" :key="cidx">
                             <tr>
                                 <td class="fw-bold text-main" x-text="'Phase ' + (cidx + 1)"></td>
-                                <td x-text="formatPower(ch.activePower || 0)"></td>
-                                <td x-text="(ch.voltage || 0).toFixed(2) + ' V'"></td>
-                                <td x-text="(ch.freq || 0).toFixed(2) + ' Hz'"></td>
-                                <td x-text="(ch.pwrFactor || 0).toFixed(2)"></td>
+                                <td class="num-col fw-semibold" x-text="formatPower(ch.activePower || 0)"></td>
+                                <td class="num-col" x-text="(ch.voltage || 0).toFixed(2) + ' V'"></td>
+                                <td class="num-col" x-text="(ch.freq || 0).toFixed(2) + ' Hz'"></td>
+                                <td class="num-col" x-text="(ch.pwrFactor || 0).toFixed(2)"></td>
                             </tr>
                         </template>
                     </tbody>

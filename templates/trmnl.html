@@ -7,6 +7,9 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='trmnl.css') }}">
 </head>
 <body>
+    <div class="page-topbar">
+        <a class="back-link" href="{{ url_for('index') }}">← Back to Dashboard</a>
+    </div>
     <div class="header">
         <h1>TRMNL OG Live Preview</h1>
         <p>Simulating 800×480 1-bit monochrome e-ink screen</p>
@@ -17,7 +20,7 @@
         </div>
     </div>
     <div class="controls">
-        <button class="btn" onclick="refreshImage()">↻ Refresh Screen</button>
+        <button type="button" class="btn" onclick="refreshImage()">↻ Refresh Screen</button>
         <a class="btn btn-secondary" href="{{ url_for('api.trmnl_status_api') }}" target="_blank">Device Telemetry JSON</a>
         <a class="btn btn-secondary" href="{{ url_for('trmnl_preview_bmp') }}" target="_blank">Raw BMP</a>
     </div>
@@ -40,16 +43,13 @@
                     {% endif %}
                 </div>
             </div>
-            <div class="telemetry-actions">
-                <a class="btn-sm" href="{{ url_for('api.trmnl_status_api') }}" target="_blank">Raw Telemetry JSON</a>
-            </div>
         </div>
 
         <div class="telemetry-stats">
             <div class="stat-tile">
                 <span class="stat-label">Battery</span>
                 <div class="stat-content">
-                    <span class="stat-main">{% if telemetry.get('battery_voltage') %}{{ telemetry.battery_voltage }}<span class="stat-unit">V</span>{% else %}—{% endif %}</span>
+                    <span class="stat-main">{% if telemetry.get('battery_voltage') %}{{ telemetry.battery_voltage }}<span class="stat-unit">V</span>{% else %}--{% endif %}</span>
                     {% if telemetry.get('battery_pct') is not none %}
                     <span class="badge {% if telemetry.battery_pct > 20 %}badge-green{% else %}badge-amber{% endif %}">{{ telemetry.battery_pct }}%</span>
                     {% endif %}
@@ -59,7 +59,7 @@
             <div class="stat-tile">
                 <span class="stat-label">Wi-Fi Signal</span>
                 <div class="stat-content">
-                    <span class="stat-main">{% if telemetry.get('rssi') %}{{ telemetry.rssi }}<span class="stat-unit">dBm</span>{% else %}—{% endif %}</span>
+                    <span class="stat-main">{% if telemetry.get('rssi') %}{{ telemetry.rssi }}<span class="stat-unit">dBm</span>{% else %}--{% endif %}</span>
                     {% if telemetry.get('wifi_quality') %}
                     <span class="badge badge-blue">{{ telemetry.wifi_quality }}</span>
                     {% endif %}
@@ -69,7 +69,7 @@
             <div class="stat-tile">
                 <span class="stat-label">Firmware</span>
                 <div class="stat-content">
-                    <span class="stat-main">{% if telemetry.get('fw_version') %}v{{ telemetry.fw_version.lstrip('v') }}{% else %}—{% endif %}</span>
+                    <span class="stat-main">{% if telemetry.get('fw_version') %}v{{ telemetry.fw_version.lstrip('v') }}{% else %}--{% endif %}</span>
                 </div>
             </div>
 
@@ -83,7 +83,7 @@
 
         <div class="telemetry-logs-section">
             <div class="logs-header">
-                <h3 class="logs-title">Device Logs & Diagnostics</h3>
+                <h3 class="logs-title">Device Logs &amp; Diagnostics</h3>
                 <span class="logs-count">{% if telemetry.logs %}{{ telemetry.logs|length }} entries{% else %}0 entries{% endif %}</span>
             </div>
             <div class="logs-console">
