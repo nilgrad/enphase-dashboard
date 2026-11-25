@@ -1,5 +1,13 @@
 <div class="tab-header">
-    <h2>Real-Time Meter Readings</h2>
+    <div class="tab-header-title-group">
+        <h2>Real-Time Energy Flow</h2>
+        <span class="live-status-pill" x-show="meters.length > 0" x-cloak :class="refreshRate > 0 ? 'is-live' : 'is-paused'">
+            <span class="live-pulse-dot" aria-hidden="true"></span>
+            <span x-text="refreshRate > 0 ? 'Live' : 'Paused'">Live</span>
+            <span class="live-status-sep" x-show="lastMetersUpdateText" aria-hidden="true">·</span>
+            <span class="live-status-time" x-show="lastMetersUpdateText" x-text="lastMetersUpdateText"></span>
+        </span>
+    </div>
     <div class="tab-controls">
         <label class="control-label" for="refresh-rate-select">Auto-Refresh:</label>
         <select id="refresh-rate-select" x-model.number="refreshRate" @change="updateRefreshInterval()">
@@ -8,73 +16,123 @@
             <option value="3000">3 Seconds</option>
             <option value="5000">5 Seconds</option>
         </select>
-        <button type="button" class="refresh-btn" @click="refreshLiveMeters()" :disabled="loadingMeters">
+        <button type="button" class="refresh-btn" @click="refreshLiveMeters()" :disabled="manualRefreshingMeters">
             <span class="btn-content-stack">
-                <span :class="{ 'invisible-text': loadingMeters }">Refresh</span>
-                <span :class="{ 'invisible-text': !loadingMeters }" class="loading">Refreshing...</span>
+                <span :class="{ 'invisible-text': manualRefreshingMeters }">Refresh</span>
+                <span :class="{ 'invisible-text': !manualRefreshingMeters }" class="loading">Refreshing...</span>
             </span>
         </button>
     </div>
 </div>
 
-<div class="data-box" x-show="meters.length === 0 && loadingMeters">
-    <p class="loading">Loading real-time data...</p>
+<!-- Skeleton placeholder during initial load -->
+<div class="energy-flow-panel" x-show="meters.length === 0 && loadingMeters" aria-busy="true" aria-label="Loading live meter readings">
+    <div class="skeleton-hero-grid">
+        <div class="skeleton-card">
+            <div class="skeleton-line skeleton-line-sm"></div>
+            <div class="skeleton-line skeleton-line-lg"></div>
+        </div>
+        <div class="skeleton-card">
+            <div class="skeleton-line skeleton-line-sm"></div>
+            <div class="skeleton-line skeleton-line-lg"></div>
+        </div>
+        <div class="skeleton-card">
+            <div class="skeleton-line skeleton-line-sm"></div>
+            <div class="skeleton-line skeleton-line-lg"></div>
+        </div>
+    </div>
 </div>
 
-<div class="live-hero-grid" x-show="meters.length > 0">
-    <!-- 1. Solar Production -->
-    <div class="live-card live-card-solar">
-        <div class="live-card-top">
-            <div>
-                <div class="live-label">Solar Production</div>
-                <div class="live-subtext">Generating power from panels</div>
+<!-- Visual 3-Node Energy Flow Stage -->
+<div class="energy-flow-panel" x-show="meters.length > 0" x-cloak>
+    <div class="energy-flow-stage">
+        <!-- 1. Solar Production Node -->
+        <div class="live-card live-card-solar">
+            <div class="live-card-top">
+                <div>
+                    <div class="live-label">Solar Production</div>
+                    <div class="live-subtext" x-text="isSolarActive ? 'Generating from panels' : 'Standby / No sun'">Generating from panels</div>
+                </div>
+                <span class="live-icon-badge solar" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="12" cy="12" r="4"></circle>
+                        <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"></path>
+                    </svg>
+                </span>
             </div>
-            <span class="live-icon-badge solar" aria-hidden="true">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <circle cx="12" cy="12" r="4"></circle>
-                    <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"></path>
-                </svg>
-            </span>
+            <div class="live-val text-solar" x-text="formatPower(prodPower)">0 W</div>
         </div>
-        <div class="live-val text-solar" x-text="formatPower(prodPower)">0 W</div>
+
+        <!-- Connector: Solar -> Home -->
+        <div class="flow-connector" :class="isSolarActive ? 'flow-solar flow-forward' : 'flow-idle'" aria-hidden="true">
+            <span class="flow-connector-badge" x-text="isSolarActive ? 'Generating' : 'Idle'">Idle</span>
+            <svg class="flow-svg" viewBox="0 0 80 24" preserveAspectRatio="none">
+                <line class="flow-track" x1="4" y1="12" x2="72" y2="12"></line>
+                <line class="flow-stream" x1="4" y1="12" x2="72" y2="12"></line>
+                <polyline class="flow-arrow" points="65,6 73,12 65,18"></polyline>
+            </svg>
+        </div>
+
+        <!-- 2. House Consumption Node (Center Hub) -->
+        <div class="live-card live-card-consumption">
+            <div class="live-card-top">
+                <div>
+                    <div class="live-label">House Consumption</div>
+                    <div class="live-subtext">Total load used by home</div>
+                </div>
+                <span class="live-icon-badge consumption" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
+                        <polyline points="9 22 9 12 15 12 15 22"></polyline>
+                    </svg>
+                </span>
+            </div>
+            <div class="live-val text-consumption" x-text="formatPower(consPower)">0 W</div>
+        </div>
+
+        <!-- Connector: Home <-> Grid -->
+        <div class="flow-connector" :class="gridFlowDirection === 'export' ? 'flow-export flow-forward' : (gridFlowDirection === 'import' ? 'flow-import flow-reverse' : 'flow-idle')" aria-hidden="true">
+            <span class="flow-connector-badge" x-text="gridFlowDirection === 'export' ? 'Exporting' : (gridFlowDirection === 'import' ? 'Importing' : 'Balanced')">Balanced</span>
+            <svg class="flow-svg" viewBox="0 0 80 24" preserveAspectRatio="none">
+                <line class="flow-track" x1="8" y1="12" x2="72" y2="12"></line>
+                <line class="flow-stream" x1="8" y1="12" x2="72" y2="12"></line>
+                <polyline class="flow-arrow" x-show="gridFlowDirection === 'export'" points="65,6 73,12 65,18"></polyline>
+                <polyline class="flow-arrow" x-show="gridFlowDirection === 'import'" points="15,6 7,12 15,18"></polyline>
+            </svg>
+        </div>
+
+        <!-- 3. Utility Grid Node -->
+        <div class="live-card" :class="gridFlowDirection === 'export' ? 'live-card-export' : (gridFlowDirection === 'import' ? 'live-card-import' : 'live-card-neutral')">
+            <div class="live-card-top">
+                <div>
+                    <div class="live-label" x-text="gridFlowDirection === 'export' ? 'Exporting to Grid' : (gridFlowDirection === 'import' ? 'Importing from Grid' : 'Grid Balanced')">Grid Flow</div>
+                    <div class="live-subtext">Net flow at utility meter</div>
+                </div>
+                <span class="live-icon-badge" :class="gridFlowDirection === 'export' ? 'export' : (gridFlowDirection === 'import' ? 'import' : 'consumption')" aria-hidden="true">
+                    <svg x-show="gridFlowDirection === 'export'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <line x1="7" y1="17" x2="17" y2="7"></line>
+                        <polyline points="7 7 17 7 17 17"></polyline>
+                    </svg>
+                    <svg x-show="gridFlowDirection !== 'export'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <line x1="17" y1="7" x2="7" y2="17"></line>
+                        <polyline points="17 17 7 17 7 7"></polyline>
+                    </svg>
+                </span>
+            </div>
+            <div class="live-val" :class="gridFlowDirection === 'export' ? 'text-export' : (gridFlowDirection === 'import' ? 'text-danger' : 'text-muted')" x-text="formatPower(Math.abs(gridPower))">0 W</div>
+        </div>
     </div>
 
-    <!-- 2. Grid Flow -->
-    <div class="live-card" :class="gridPower < 0 ? 'live-card-export' : 'live-card-import'">
-        <div class="live-card-top">
-            <div>
-                <div class="live-label" x-text="gridPower < 0 ? 'Exporting to Grid' : 'Importing from Grid'">Grid Flow</div>
-                <div class="live-subtext">Net flow at the meter</div>
-            </div>
-            <span class="live-icon-badge" :class="gridPower < 0 ? 'export' : 'import'" aria-hidden="true">
-                <svg x-show="gridPower < 0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <line x1="7" y1="17" x2="17" y2="7"></line>
-                    <polyline points="7 7 17 7 17 17"></polyline>
-                </svg>
-                <svg x-show="gridPower >= 0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <line x1="17" y1="7" x2="7" y2="17"></line>
-                    <polyline points="17 17 7 17 7 7"></polyline>
-                </svg>
-            </span>
+    <!-- Real-Time Home Power Mix Bar -->
+    <div class="power-mix-wrap">
+        <div class="power-mix-header">
+            <span class="power-mix-label">Live Home Power Source</span>
+            <span class="power-mix-summary" x-text="liveSourceSummary"></span>
         </div>
-        <div class="live-val" :class="gridPower < 0 ? 'text-export' : 'text-danger'" x-text="formatPower(Math.abs(gridPower))">0 W</div>
-    </div>
-
-    <!-- 3. Consumption -->
-    <div class="live-card live-card-consumption">
-        <div class="live-card-top">
-            <div>
-                <div class="live-label">House Consumption</div>
-                <div class="live-subtext">Total power used by home</div>
-            </div>
-            <span class="live-icon-badge consumption" aria-hidden="true">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
-                    <polyline points="9 22 9 12 15 12 15 22"></polyline>
-                </svg>
-            </span>
+        <div class="power-mix-track" role="img" :aria-label="liveSourceSummary">
+            <div class="power-mix-segment solar" :style="{ width: liveSolarSharePct + '%' }"></div>
+            <div class="power-mix-segment import" :style="{ width: liveGridSharePct + '%' }"></div>
         </div>
-        <div class="live-val text-consumption" x-text="formatPower(consPower)">0 W</div>
     </div>
 </div>
 
@@ -116,6 +174,9 @@
         <div class="metric-card offset live-metric-card">
             <div class="metric-card-title live-metric-title">Solar Coverage</div>
             <div class="metric-card-value live-metric-value" x-text="todayCoverage.toFixed(1) + '%'">0.0%</div>
+            <div class="coverage-bar-track" aria-hidden="true">
+                <div class="coverage-bar-fill" :style="{ width: todayCoverageClamped + '%' }"></div>
+            </div>
         </div>
     </div>
 </div>
