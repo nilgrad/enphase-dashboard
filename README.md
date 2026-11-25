@@ -4,7 +4,7 @@ A self-hosted, offline-first web dashboard for real-time monitoring and historic
 
 Bypasses cloud latency and rate limits to deliver low-latency telemetry, resilient energy accounting, hardware diagnostics, and native TRMNL e-ink display rendering in a zero-build web interface.
 
-See [CHANGELOG.md](CHANGELOG.md) for the v1.0.0 release notes.
+See [CHANGELOG.md](CHANGELOG.md) for the v1.0.1 release notes.
 
 ---
 
@@ -58,7 +58,7 @@ See [CHANGELOG.md](CHANGELOG.md) for the v1.0.0 release notes.
 
 ---
 
-## Deployment Guide (v1.0.0)
+## Deployment Guide (v1.0.1)
 
 ### 1. Configure Local Credentials & Settings
 
