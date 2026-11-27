@@ -4,11 +4,25 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>TRMNL OG Display Preview</title>
+    <script>
+        (function() {
+            try {
+                var saved = localStorage.getItem('enphase-theme') || 'auto';
+                var resolved = saved === 'auto'
+                    ? (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
+                    : saved;
+                document.documentElement.dataset.theme = resolved;
+            } catch (_e) {
+                document.documentElement.dataset.theme = 'dark';
+            }
+        })();
+    </script>
     <link rel="stylesheet" href="{{ url_for('static', filename='trmnl.css') }}">
 </head>
 <body>
     <div class="page-topbar">
         <a class="back-link" href="{{ url_for('index') }}">← Back to Dashboard</a>
+        <button type="button" id="trmnl-theme-btn" class="back-link" onclick="cycleTheme()" aria-label="Switch color theme">Theme: Auto</button>
     </div>
     <div class="header">
         <h1>TRMNL OG Live Preview</h1>
@@ -20,7 +34,7 @@
         </div>
     </div>
     <div class="controls">
-        <button type="button" class="btn" onclick="refreshImage()">↻ Refresh Screen</button>
+        <button type="button" id="refresh-screen-btn" class="btn" onclick="refreshImage()">↻ Refresh Screen</button>
         <a class="btn btn-secondary" href="{{ url_for('api.trmnl_status_api') }}" target="_blank">Device Telemetry JSON</a>
         <a class="btn btn-secondary" href="{{ url_for('trmnl_preview_bmp') }}" target="_blank">Raw BMP</a>
     </div>
@@ -105,9 +119,66 @@
     </div>
 
     <script>
-        function refreshImage() {
+        const THEME_KEY = 'enphase-theme';
+        const THEME_MODES = ['auto', 'dark', 'light'];
+
+        function getSavedTheme() {
+            try {
+                const v = localStorage.getItem(THEME_KEY);
+                return THEME_MODES.includes(v) ? v : 'auto';
+            } catch (_e) {
+                return 'auto';
+            }
+        }
+
+        function applyTheme(pref) {
+            const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+            const resolved = pref === 'auto' ? (prefersDark ? 'dark' : 'light') : pref;
+            document.documentElement.dataset.theme = resolved;
+            const btn = document.getElementById('trmnl-theme-btn');
+            if (btn) {
+                btn.textContent = 'Theme: ' + pref.charAt(0).toUpperCase() + pref.slice(1);
+            }
+        }
+
+        function cycleTheme() {
+            const current = getSavedTheme();
+            const next = THEME_MODES[(THEME_MODES.indexOf(current) + 1) % THEME_MODES.length];
+            try {
+                localStorage.setItem(THEME_KEY, next);
+            } catch (_e) {
+                // Ignore restricted storage errors
+            }
+            applyTheme(next);
+        }
+
+        applyTheme(getSavedTheme());
+        if (window.matchMedia) {
+            window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
+                if (getSavedTheme() === 'auto') applyTheme('auto');
+            });
+        }
+
+        async function refreshImage() {
+            const btn = document.getElementById('refresh-screen-btn');
             const img = document.getElementById('trmnl-img');
-            img.src = "{{ url_for('trmnl_preview_png') }}?t=" + Date.now();
+            if (btn) {
+                btn.disabled = true;
+                btn.textContent = '↻ Rendering...';
+            }
+            try {
+                await fetch("{{ url_for('trmnl_refresh') }}", { method: 'POST' });
+            } catch (_e) {
+                // Still reload preview image even if POST failed
+            } finally {
+                if (img) {
+                    img.src = "{{ url_for('trmnl_preview_png') }}?t=" + Date.now();
+                }
+                if (btn) {
+                    btn.disabled = false;
+                    btn.textContent = '↻ Refresh Screen';
+                }
+            }
         }
     </script>
 </body>

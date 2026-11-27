@@ -440,6 +440,11 @@ def trmnl_display_api():
     filename = f"solar_{mtime}.bmp"
     image_url = _build_signed_image_url(base_url, '/api/display/current.bmp', api_key, refresh_rate * 2)
 
+    try:
+        image_rotate = int(trmnl_cfg.get('image_rotate', 1))
+    except (TypeError, ValueError):
+        image_rotate = 1
+
     return jsonify({
         "status": 0,
         "image_url": image_url,
@@ -449,7 +454,7 @@ def trmnl_display_api():
         "update_firmware": False,
         "firmware_url": None,
         "special_function": "none",
-        "image_rotate": 1
+        "image_rotate": image_rotate
     })
 
 

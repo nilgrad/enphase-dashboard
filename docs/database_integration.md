@@ -76,7 +76,7 @@ Daily kWh totals are derived from the summed `Wh` deltas:
 `compute_daily_metrics()` produces one canonical payload shared by both the Web UI and TRMNL e-ink renderer:
 * **Net Grid Flow**: `export_kwh - import_kwh` (positive = net export, negative = net import).
 * **Solar Coverage (%)**: `min(100, max(0, (max(0, production_kwh - export_kwh) / consumption_kwh) * 100))` (direct solar self-consumption as a share of house consumption, `0.0%` if consumption is `0`).
-* **Freshness & Midnight Rollover**: Looks up `DailyStats` for today's local date (avoiding showing yesterday's totals after midnight) and marks `is_stale = True` if the latest `MeterReading` is older than `45 minutes`.
+* **Freshness & Midnight Rollover**: Looks up `DailyStats` for today's local date (avoiding showing yesterday's totals after midnight) and marks `is_stale = True` if the latest `MeterReading` is older than `45 minutes`. TRMNL reflects these states in its footer (`ACTIVE`, `ESTIMATED`, `AWAITING DATA`, `STALE`, or `NO DATA`) and queries the trailing 7 local days of `DailyStats` for its 7-day trend bar chart.
 
 ---
 

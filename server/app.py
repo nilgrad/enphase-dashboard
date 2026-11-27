@@ -7,7 +7,7 @@ PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
 
-from flask import Flask, render_template, send_file, make_response
+from flask import Flask, jsonify, render_template, send_file, make_response
 from flask_apscheduler import APScheduler
 from werkzeug.middleware.proxy_fix import ProxyFix
 from server.db import db, MeterReading
@@ -103,6 +103,14 @@ def _register_routes(flask_app):
         response.headers['Pragma'] = 'no-cache'
         response.headers['Expires'] = '0'
         return response
+
+    @flask_app.route('/trmnl/refresh', methods=['POST'])
+    def trmnl_refresh():
+        rendered = update_trmnl_display(flask_app)
+        telemetry = load_trmnl_telemetry()
+        if rendered is None:
+            return jsonify({"status": "error", "error": "Failed to re-render TRMNL display."}), 500
+        return jsonify({"status": "ok", "telemetry": telemetry}), 200
 
 
 def _run_startup_tasks(flask_app):

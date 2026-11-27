@@ -20,6 +20,7 @@ trmnl:
   api_key: "CHANGE_ME_TRMNL_API_KEY"  # Required device Access-Token for TRMNL API endpoints
   setup_enabled: false           # Set to true temporarily only while pairing a new TRMNL device via /api/setup
   allowed_macs: []               # Optional list of device MAC IDs permitted to use /api/setup (e.g. ["AA:BB:CC:DD:EE:FF"])
+  image_rotate: 1                # Screen orientation flag passed to TRMNL firmware (0 or 1)
   title: "DAILY SOLAR STATUS"    # Screen title
 
 
