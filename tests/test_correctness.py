@@ -300,6 +300,98 @@ class MetricsAndTrmnlTests(unittest.TestCase):
             self.assertEqual(saved['mac_id'], 'AA:BB:CC')
             self.assertEqual(len(saved['logs']), 10)
 
+    def test_trmnl_data_status_balanced_net_grid_7day_history_and_token_warning(self):
+        import jwt as pyjwt
+        tz = ZoneInfo('America/New_York')
+        now_utc = datetime.now(timezone.utc)
+        today_local = now_utc.astimezone(tz).date()
+
+        exp_soon_token = pyjwt.encode(
+            {'sub': 'envoy', 'exp': int((now_utc + timedelta(days=5, hours=1)).timestamp())},
+            'test-signing-key-at-least-32-bytes!',
+            algorithm='HS256',
+        )
+        cfg = {'gateway_token': exp_soon_token, 'trmnl': {'title': 'CUSTOM SOLAR'}}
+
+        # 1. Empty DB -> NO DATA and "No readings yet"
+        with patch('server.config.load_config', return_value=cfg):
+            empty_data = trmnl_service.get_trmnl_data(self.app)
+        self.assertEqual(empty_data['status_label'], 'NO DATA')
+        self.assertEqual(empty_data['last_updated'], 'No readings yet')
+        self.assertEqual(empty_data['net_grid_str'], '0.0')
+        self.assertEqual(empty_data['net_grid_badge'], 'BALANCED')
+        self.assertEqual(empty_data['daily_history'], [])
+        self.assertEqual(empty_data['token_warning'], 'TOKEN 5D')
+
+        # 2. Recent reading exists, no DailyStats row for today -> AWAITING DATA
+        with self.app.app_context():
+            db.session.add(MeterReading(
+                timestamp=now_utc.replace(tzinfo=None) - timedelta(minutes=5),
+                production_wh=50000,
+                import_wh=10000,
+                export_wh=20000,
+            ))
+            db.session.commit()
+
+        with patch('server.config.load_config', return_value=cfg):
+            awaiting_data = trmnl_service.get_trmnl_data(self.app)
+        self.assertEqual(awaiting_data['status_label'], 'AWAITING DATA')
+        self.assertNotEqual(awaiting_data['last_updated'], 'No readings yet')
+
+        # 3. Near-zero negative net grid (-0.02) on an interpolated day -> BALANCED (no "-0.0") & ESTIMATED + 7-day history
+        with self.app.app_context():
+            db.session.add(DailyStats(
+                date=today_local - timedelta(days=1),
+                production_kwh=20.0,
+                export_kwh=10.0,
+                import_kwh=5.0,
+                consumption_kwh=15.0,
+                is_interpolated=False,
+            ))
+            db.session.add(DailyStats(
+                date=today_local,
+                production_kwh=10.0,
+                export_kwh=5.00,
+                import_kwh=5.02,
+                consumption_kwh=10.02,
+                is_interpolated=True,
+            ))
+            db.session.commit()
+
+        with patch('server.config.load_config', return_value=cfg):
+            est_data = trmnl_service.get_trmnl_data(self.app)
+        self.assertEqual(est_data['status_label'], 'ESTIMATED')
+        self.assertEqual(est_data['net_grid_str'], '0.0')
+        self.assertEqual(est_data['net_grid_badge'], 'BALANCED')
+        self.assertEqual(len(est_data['daily_history']), 7)
+        self.assertTrue(est_data['daily_history'][-1]['is_today'])
+        self.assertEqual(est_data['daily_history'][-1]['label'], 'TODAY')
+        self.assertAlmostEqual(est_data['daily_history'][-2]['production'], 20.0, places=2)
+
+        # Render with stress inputs (3-digit values, long title, token warning, 7-day bars)
+        png_path = os.path.join(self.tmpdir.name, 'trmnl_rich.png')
+        bmp_path = os.path.join(self.tmpdir.name, 'trmnl_rich.bmp')
+        est_data['title'] = 'A VERY LONG CUSTOM SOLAR DASHBOARD TITLE THAT MUST TRUNCATE CLEANLY'
+        est_data['net_grid_str'] = '-125.4'
+        est_data['net_grid_badge'] = 'IMPORT'
+        trmnl_service.render_trmnl_solar(est_data, output_png_path=png_path, output_bmp_path=bmp_path)
+        with Image.open(png_path) as im:
+            self.assertEqual(im.size, (800, 480))
+            self.assertEqual(im.mode, '1')
+
+    def test_record_reading_respects_trmnl_disabled(self):
+        tz = ZoneInfo('America/New_York')
+        now_local = datetime.now(timezone.utc).astimezone(tz)
+        sample = [
+            {'eid': 2, 'measurementType': 'net-consumption', 'meterState': 'enabled', 'timestamp': int(now_local.timestamp()), 'actEnergyDlvd': 10000, 'actEnergyRcvd': 20000},
+            {'eid': 1, 'measurementType': 'production', 'meterState': 'enabled', 'timestamp': int(now_local.timestamp()), 'actEnergyDlvd': 50000},
+        ]
+        with patch('server.dashboard_services.get_gateway_readings', return_value=sample), \
+             patch('server.config.load_config', return_value={'trmnl': {'enabled': False}}), \
+             patch('server.trmnl_service.update_trmnl_display') as mock_update:
+            record_reading(self.app)
+            mock_update.assert_not_called()
+
 
 class HardwarePortabilityAndSpecsTests(unittest.TestCase):
     def setUp(self):
@@ -457,11 +549,12 @@ class ApiAndRecordReadingTests(unittest.TestCase):
             ],
         ]
 
-        test_cfg = {'trmnl': {'api_key': 'test-trmnl-secret', 'refresh_rate_seconds': 600}}
+        test_cfg = {'trmnl': {'api_key': 'test-trmnl-secret', 'refresh_rate_seconds': 600, 'image_rotate': 0}}
         auth_headers = {'Access-Token': 'test-trmnl-secret'}
 
         with patch('server.dashboard_services.get_gateway_readings', side_effect=samples), \
              patch('server.api.load_config', return_value=test_cfg), \
+             patch('server.config.load_config', return_value=test_cfg), \
              patch.object(trmnl_service, 'OUTPUT_IMAGE_PATH', png_path), \
              patch.object(trmnl_service, 'OUTPUT_BMP_PATH', bmp_path), \
              patch.object(trmnl_service, 'TELEMETRY_PATH', telemetry_path), \
@@ -484,6 +577,7 @@ class ApiAndRecordReadingTests(unittest.TestCase):
             self.assertEqual(resp.status_code, 200)
             payload = resp.get_json()
             self.assertEqual(payload['status'], 0)
+            self.assertEqual(payload['image_rotate'], 0)
             self.assertTrue(payload['filename'].startswith('solar_'))
 
             bmp_resp = self.client.get('/api/display/current.bmp', headers=auth_headers)

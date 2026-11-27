@@ -183,3 +183,27 @@ def test_tab_templates_avoid_static_inline_style_attributes():
         if re.search(r'(?<!:)style="', content):
             offenders.append(fname)
     assert offenders == [], f'Found static inline style attributes in tab templates: {offenders}'
+
+
+def test_trmnl_preview_page_supports_theme_and_live_refresh(client, tmp_path):
+    import server.trmnl_service as trmnl_service
+
+    png_path = str(tmp_path / 'trmnl_display.png')
+    bmp_path = str(tmp_path / 'trmnl_display.bmp')
+    telemetry_path = str(tmp_path / 'trmnl_telemetry.json')
+
+    html = client.get('/trmnl').get_data(as_text=True)
+    assert 'enphase-theme' in html
+    assert 'trmnl-theme-btn' in html
+    assert '/trmnl/refresh' in html
+
+    with patch.object(trmnl_service, 'OUTPUT_IMAGE_PATH', png_path), \
+         patch.object(trmnl_service, 'OUTPUT_BMP_PATH', bmp_path), \
+         patch.object(trmnl_service, 'TELEMETRY_PATH', telemetry_path), \
+         patch.object(trmnl_service, 'LEGACY_TELEMETRY_PATH', ''):
+        resp = client.post('/trmnl/refresh')
+        assert resp.status_code == 200
+        body = resp.get_json()
+        assert body['status'] == 'ok'
+        assert os.path.isfile(png_path)
+        assert os.path.isfile(bmp_path)

@@ -7,19 +7,39 @@
 }
 
 :root {
+    --bg-main: #f8fafc;
+    --bg-card: #ffffff;
+    --bg-subtle: #f1f5f9;
+    --bg-bezel: #1e293b;
+    --bg-secondary-hover: #e2e8f0;
+    --border-card: #e2e8f0;
+    --border-soft: #e2e8f0;
+    --text-main: #0f172a;
+    --text-secondary: #334155;
+    --text-muted: #64748b;
+    --log-accent: #b45309;
+    --brand-accent: #059669;
+    --brand-accent-hover: #047857;
+    --brand-accent-fg: #ffffff;
+    --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    --font-mono: 'Monaspace Krypton', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+:root[data-theme="dark"] {
     --bg-main: #0b0f19;
     --bg-card: #161f30;
     --bg-subtle: #111827;
+    --bg-bezel: #1a2233;
+    --bg-secondary-hover: #1f2b42;
     --border-card: #263349;
     --border-soft: #1e293b;
     --text-main: #f1f5f9;
     --text-secondary: #cbd5e1;
     --text-muted: #94a3b8;
+    --log-accent: #fcd34d;
     --brand-accent: #10b981;
     --brand-accent-hover: #34d399;
     --brand-accent-fg: #052e16;
-    --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-    --font-mono: 'Monaspace Krypton', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 }
 
 * {
@@ -99,10 +119,10 @@ a:focus-visible {
 .device-bezel {
     width: 856px;
     max-width: 100%;
-    background: #1a2233;
+    background: var(--bg-bezel);
     padding: 24px;
     border-radius: 22px;
-    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.72), inset 0 1px 1px rgba(255, 255, 255, 0.08);
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.35), inset 0 1px 1px rgba(255, 255, 255, 0.08);
     border: 1px solid var(--border-card);
 }
 
@@ -151,6 +171,11 @@ a:focus-visible {
     background: var(--brand-accent-hover);
 }
 
+.btn:disabled {
+    opacity: 0.65;
+    cursor: wait;
+}
+
 .btn-secondary {
     background: var(--bg-card);
     color: var(--text-secondary);
@@ -159,9 +184,9 @@ a:focus-visible {
 }
 
 .btn-secondary:hover {
-    background: #1f2b42;
+    background: var(--bg-secondary-hover);
     color: var(--text-main);
-    border-color: #364763;
+    border-color: var(--border-card);
 }
 
 .telemetry-card {
@@ -396,7 +421,7 @@ a:focus-visible {
 }
 
 .log-content {
-    color: #fcd34d;
+    color: var(--log-accent);
     word-break: break-all;
 }
 

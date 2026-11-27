@@ -283,8 +283,11 @@ def record_reading(app):
 
             # Update TRMNL screen if enabled
             try:
-                from server.trmnl_service import update_trmnl_display
-                update_trmnl_display(app)
+                from server.config import load_config
+                cfg = load_config()
+                if cfg.get('trmnl', {}).get('enabled', True):
+                    from server.trmnl_service import update_trmnl_display
+                    update_trmnl_display(app)
             except Exception:
                 logger.exception("TRMNL update failed after recording reading")
 
