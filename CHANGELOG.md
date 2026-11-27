@@ -5,6 +5,22 @@ All notable changes to **Enphase Local Dashboard** are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0] - 2026-11-26
+
+Upgraded the TRMNL 800x480 1-bit e-ink display layout with a 7-day trend bar chart, solar coverage progress bar, net grid status pills, gateway token expiry alerts, live preview re-rendering, and dashboard theme synchronization.
+
+### Added
+- **7-Day Trend Chart & Solar Coverage Panel on TRMNL** (#26): Added a DB-backed 7-day paired Solar vs. Usage bar chart (solid black Solar bars vs. pure 1-bit 45-degree hatched Usage bars with an inverted `TODAY` pill), a Solar Coverage progress bar with a 50% midpoint tick and direct/consumption ratio, and a side-by-side Export/Import breakdown.
+- **TRMNL Gateway Token Expiry Alerts** (#26): Surfaced an inverted warning pill (`TOKEN EXPIRED` / `TOKEN XD`) in the TRMNL footer bar whenever the Enphase gateway JWT is expired or expiring soon.
+- **Live TRMNL Preview Re-Render & Theme Sync** (#26): Added `POST /trmnl/refresh` so the preview page's "Refresh Screen" button triggers an immediate server-side re-render, and synced `/trmnl` with the main dashboard's `Auto / Dark / Light` theme preference (`enphase-theme`).
+- **Configurable TRMNL Orientation** (#26): Added `trmnl.image_rotate` in `configuration/config.yml` (default `1`) instead of hardcoding rotation in `/api/display`.
+
+### Changed
+- **3-Column TRMNL Hero Row & Typography Polish** (#26): Replaced the uniform 6-box grid with a 3-column hero row (`SOLAR`, `USAGE`, `NET GRID`) featuring a 1-bit lightning bolt header mark, sun/house icons, inverted `EXPORT`/`IMPORT` (or outlined `BALANCED`) pill badges, shared bottom numeric baselines, automatic font step-down for 3-digit values, and header title truncation.
+
+### Fixed
+- **TRMNL Sync & Edge-Case Fixes** (#26): Made `record_reading()` honor `trmnl.enabled: false`, synced midnight `AWAITING DATA` and outage `ESTIMATED` status labels with the web dashboard, prevented `-0.0 kWh Import` formatting on near-zero net grid values, and replaced the `NO DATA` fallback clock timestamp with `No readings yet`.
+
 ## [1.1.0] - 2026-11-25
 
 Major UI/UX upgrade introducing a live 3-node energy flow diagram, emerald-green solar palette, History timeframe controls and CSV export, inverter health filtering, phase totals, and navigation status badges.

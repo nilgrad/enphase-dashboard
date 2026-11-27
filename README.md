@@ -4,7 +4,7 @@ A self-hosted, offline-first web dashboard for real-time monitoring and historic
 
 Bypasses cloud latency and rate limits to deliver low-latency telemetry, resilient energy accounting, hardware diagnostics, and native TRMNL e-ink display rendering in a zero-build web interface.
 
-See [CHANGELOG.md](CHANGELOG.md) for the v1.1.0 release notes.
+See [CHANGELOG.md](CHANGELOG.md) for the v1.2.0 release notes.
 
 ![Enphase Local Dashboard](docs/screenshot.gif)
 
@@ -18,7 +18,7 @@ See [CHANGELOG.md](CHANGELOG.md) for the v1.1.0 release notes.
 - **Cached Gateway Sessions & JWT Monitoring**: Reuses a thread-safe authenticated Envoy session with explicit HTTP timeouts, automatic `401`/`403` re-authentication, and proactive dashboard warnings before your annual Enphase JWT expires.
 - **Resilient Energy Accounting**: Records hardware-level lifetime cumulative active energy counters ($Wh$) every 15 minutes with half-open local-timezone DST day boundaries and automatic multi-day outage interpolation.
 - **Split-Phase & Inverter Health**: Dynamically detects production and grid meters via `/ivp/meters` metadata, displays per-phase electrical readings with `Total / Avg` summary rows, and monitors per-inverter health with `All / Issues` filtering, unhealthy-first sorting, relative last-reported timestamps, and tab alert/issue count badges.
-- **Native TRMNL E-Ink Display (BYOS)**: Serves [TRMNL OG](https://trmnl.com) devices via authenticated BYOS endpoints (`Access-Token` + short-lived signed image URLs) with atomic 800×480 1-bit rendering, responsive in-browser preview, and persistent telemetry.
+- **Native TRMNL E-Ink Display (BYOS)**: Serves [TRMNL OG](https://trmnl.com) devices via authenticated BYOS endpoints (`Access-Token` + short-lived signed image URLs) with atomic 800x480 1-bit rendering (hero cards, 7-day trend bar chart, solar coverage progress bar, and JWT expiry alerts), live-refreshing theme-synced browser preview, and persistent telemetry.
 
 ---
 
@@ -61,7 +61,7 @@ See [CHANGELOG.md](CHANGELOG.md) for the v1.1.0 release notes.
 
 ---
 
-## Deployment Guide (v1.1.0)
+## Deployment Guide (v1.2.0)
 
 ### 1. Configure Local Credentials & Settings
 
@@ -94,6 +94,7 @@ See [CHANGELOG.md](CHANGELOG.md) for the v1.1.0 release notes.
      api_key: "CHANGE_ME_TRMNL_API_KEY" # Required Access-Token for TRMNL API endpoints
      setup_enabled: false               # Set true temporarily only while pairing a new TRMNL device
      allowed_macs: []                   # Optional MAC allowlist for /api/setup (e.g. ["AA:BB:CC:DD:EE:FF"])
+     image_rotate: 1                    # Screen orientation flag passed to TRMNL firmware (0 or 1)
      title: "DAILY SOLAR STATUS"        # Screen title
    ```
 
@@ -220,11 +221,11 @@ The dashboard includes native **Bring Your Own Server (BYOS)** support for [TRMN
 
 ### Endpoints
 - `GET /api/setup`: Returns device handshake and configuration instructions. Disabled by default (`trmnl.setup_enabled: false`) for unauthenticated callers; enable temporarily (optionally with `trmnl.allowed_macs`) when pairing a new device, or authenticate with `Access-Token`.
-- `GET /api/display`: Polled by TRMNL on wake (requires `Access-Token` header matching `trmnl.api_key`); returns sleep duration, landscape rotation, dynamic filename, and a short-lived signed `image_url`.
+- `GET /api/display`: Polled by TRMNL on wake (requires `Access-Token` header matching `trmnl.api_key`); returns sleep duration, configurable orientation (`trmnl.image_rotate`), dynamic filename, and a short-lived signed `image_url`.
 - `GET /api/display/current.bmp` & `GET /api/display/current.png`: Serves the rendered 1-bit monochrome image (requires `Access-Token` header or a valid signed URL from `/api/display`).
 - `POST /api/log`: Ingests and acknowledges device telemetry and error logs (requires `Access-Token` header; payload capped at 16 KiB).
 - `GET /api/display/status`: Returns JSON with the latest recorded device status (battery voltage, Wi-Fi RSSI, firmware version, and logs).
-- `GET /trmnl`: Interactive in-browser display preview (also linked from the main dashboard header when TRMNL is enabled).
+- `GET /trmnl` & `POST /trmnl/refresh`: Theme-synced in-browser display preview (also linked from the main dashboard header when TRMNL is enabled) with on-demand server-side re-rendering.
 
 ### Setting Up Your TRMNL Device
 1. Set a strong `trmnl.api_key` in `configuration/config.yml` (and temporarily set `trmnl.setup_enabled: true` if your device uses `/api/setup` during initial pairing).

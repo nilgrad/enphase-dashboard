@@ -302,7 +302,7 @@ def _draw_value_with_unit(draw, x: int, baseline_y: int, num_str: str, unit_str:
 
 
 def render_trmnl_solar(data: dict, output_png_path: str = None, output_bmp_path: str = None):
-    """Renders 800x480 1-bit monochrome e-ink screen synced with the v1.1.0 Enphase Dashboard."""
+    """Renders 800x480 1-bit monochrome e-ink screen synced with the Enphase Dashboard."""
     if output_png_path is None:
         output_png_path = OUTPUT_IMAGE_PATH
     if output_bmp_path is None:
